@@ -14,14 +14,17 @@
             <p style="color:rgba(255,255,255,0.38); font-size:14px; margin-bottom:8px;">{{ __('messages.verify.sent_to') }}</p>
             <p style="color:rgba(255,255,255,0.75); font-size:14px; font-weight:600; margin-bottom:32px;">{{ $email ?: 'seu@email.com' }}</p>
 
-            {{-- OTP boxes over a transparent input --}}
-            <div style="position:relative; display:flex; gap:10px; justify-content:center; margin-bottom:14px;">
-                @for ($i = 0; $i < 4; $i++)
-                    <div style="width:62px; height:72px; border-radius:14px; background:rgba(255,255,255,0.05); border:1.5px solid {{ ($code[$i] ?? '') !== '' ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.1)' }}; display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:700; color:#e8e8f0; font-family:monospace; transition:border-color 0.2s;">
-                        {{ $code[$i] ?? '' }}
+            {{-- OTP boxes over a transparent input — digits render client-side (Alpine), so
+                 typing is instant; the value syncs to the server only on submit (deferred). --}}
+            <div x-data="{ code: $wire.entangle('code') }" style="position:relative; display:flex; gap:10px; justify-content:center; margin-bottom:14px;">
+                <template x-for="i in 4" :key="i">
+                    <div style="width:62px; height:72px; border-radius:14px; background:rgba(255,255,255,0.05); border:1.5px solid; display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:700; color:#e8e8f0; font-family:monospace; transition:border-color 0.2s;"
+                        :style="(code[i-1] ?? '') !== '' ? 'border-color:rgba(251,191,36,0.5)' : 'border-color:rgba(255,255,255,0.1)'">
+                        <span x-text="code[i-1] ?? ''"></span>
                     </div>
-                @endfor
-                <input type="tel" wire:model.live="code" maxlength="4" inputmode="numeric"
+                </template>
+                <input type="tel" maxlength="4" inputmode="numeric" autocomplete="one-time-code" x-model="code"
+                    @input="code = code.replace(/\D/g, '').slice(0, 4); if (code.length === 4) $wire.confirm()"
                     style="position:absolute; inset:0; opacity:0; font-size:1px; cursor:default;">
             </div>
             <p style="text-align:center; font-size:12px; color:rgba(255,255,255,0.25); margin-bottom:32px;">{{ __('messages.verify.hint') }}</p>
@@ -35,7 +38,7 @@
             @endif
 
             <div style="margin-bottom:40px;">
-                <x-petabit.btn wire:click="confirm" :disabled="! $this->codeOk">{{ $isNew ? __('messages.verify.submit_new') : __('messages.verify.submit_existing') }}</x-petabit.btn>
+                <x-petabit.btn wire:click="confirm">{{ $isNew ? __('messages.verify.submit_new') : __('messages.verify.submit_existing') }}</x-petabit.btn>
             </div>
         </div>
     </div>

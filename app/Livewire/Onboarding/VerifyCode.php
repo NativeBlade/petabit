@@ -45,7 +45,7 @@ class VerifyCode extends Component
     public function confirm(PetabitApiClient $api)
     {
         if (! $this->codeOk()) {
-            return;
+            return NativeBlade::impact('heavy')->toResponse();
         }
 
         try {
