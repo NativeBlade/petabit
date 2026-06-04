@@ -104,6 +104,20 @@ return [
                 'generic'            => 'Could not merge right now.',
             ],
         ],
+
+        'account' => [
+            'title'          => 'Account',
+            'username'       => 'Username',
+            'email'          => 'Email',
+            'version'        => 'Version',
+            'support'        => 'Support',
+            'logout'         => 'Log out',
+            'logout_confirm' => 'Are you sure you want to log out?',
+            'delete'         => 'Delete my account',
+            'delete_warning' => 'Your account will be scheduled for deletion and erased in 30 days. Just log in again within that period to cancel.',
+            'cancel'         => 'Cancel',
+            'delete_confirm' => 'Delete',
+        ],
     ],
 
     'question' => [

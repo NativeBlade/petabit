@@ -15,6 +15,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use NativeBlade\Facades\NativeBlade;
+use NativeBlade\Plugins\Dialog;
 use NativeBlade\Plugins\Notification;
 use NativeBlade\Plugins\Scan;
 
@@ -180,6 +181,58 @@ class Home extends Component
         return true;
     }
 
+    /* ---- account (Conta tab) ---- */
+
+    /** Where the "Support" link opens. Replace with your support form URL. */
+    private const SUPPORT_URL = 'https://forms.gle/Aquf22kgs9tSD94cA';
+
+    /** Request account deletion (soft — purged after the grace period) and sign out. */
+    public function requestDeletion()
+    {
+        try {
+            app(PetabitApiClient::class)->deleteAccount();
+        } catch (\Throwable $e) {
+            // Fall through to local sign-out even if the request couldn't be sent.
+        }
+
+        return $this->signOut();
+    }
+
+    /** Ask the native confirm dialog before signing out. */
+    public function confirmLogout()
+    {
+        return NativeBlade::confirm(fn (Dialog $d) => $d
+            ->id('logout')
+            ->title(__('messages.home.account.logout'))
+            ->message(__('messages.home.account.logout_confirm'))
+            ->confirmLabel(__('messages.home.account.logout'))
+            ->cancelLabel(__('messages.home.account.cancel')))
+            ->toResponse();
+    }
+
+    /** Native confirm dialog result (logout). */
+    #[On('nb:confirm-result')]
+    public function onConfirmResult($confirmed, $id = null)
+    {
+        if ($id === 'logout' && $confirmed) {
+            return $this->signOut();
+        }
+    }
+
+    public function openSupport()
+    {
+        return NativeBlade::openUrl(self::SUPPORT_URL)->toResponse();
+    }
+
+    private function signOut()
+    {
+        AuthState::clear();
+        PetState::clear();
+        HabitsState::clear();
+
+        return NativeBlade::navigate('/', replace: true)->toResponse();
+    }
+
     /* ---- merge (Mesclar) ---- */
 
     /** Generate a pairing QR for the other player to scan (or type the code). */
@@ -308,6 +361,18 @@ class Home extends Component
             'canMerge'    => PetState::canMerge(),
             'merges'      => PetState::merges(),
             'pendingMerges' => PetState::pendingMerges(),
+            // Conta tab.
+            'email'       => AuthState::user()['email'] ?? '',
+            'appVersion'  => $this->appVersion(),
         ]);
+    }
+
+    private function appVersion(): string
+    {
+        try {
+            return NativeBlade::version();
+        } catch (\Throwable $e) {
+            return '';
+        }
     }
 }

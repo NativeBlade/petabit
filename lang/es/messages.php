@@ -104,6 +104,20 @@ return [
                 'generic'            => 'No se pudo fusionar ahora.',
             ],
         ],
+
+        'account' => [
+            'title'          => 'Cuenta',
+            'username'       => 'Usuario',
+            'email'          => 'Correo',
+            'version'        => 'Versión',
+            'support'        => 'Soporte',
+            'logout'         => 'Cerrar sesión',
+            'logout_confirm' => '¿Seguro que quieres cerrar sesión?',
+            'delete'         => 'Eliminar mi cuenta',
+            'delete_warning' => 'Tu cuenta quedará marcada para eliminación y se borrará en 30 días. Solo inicia sesión de nuevo en ese plazo para cancelar.',
+            'cancel'         => 'Cancelar',
+            'delete_confirm' => 'Eliminar',
+        ],
     ],
 
     'question' => [

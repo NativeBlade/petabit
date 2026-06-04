@@ -20,6 +20,7 @@ return [
         'petabit' => 'Petabit',
         'genoma'  => 'Genoma',
         'mesclar' => 'Mesclar',
+        'conta'   => 'Conta',
     ],
 
     'stage' => [

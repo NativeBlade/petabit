@@ -104,6 +104,20 @@ return [
                 'generic'            => 'Não foi possível mesclar agora.',
             ],
         ],
+
+        'account' => [
+            'title'          => 'Conta',
+            'username'       => 'Usuário',
+            'email'          => 'E-mail',
+            'version'        => 'Versão',
+            'support'        => 'Suporte',
+            'logout'         => 'Sair',
+            'logout_confirm' => 'Tem certeza que deseja sair?',
+            'delete'         => 'Excluir minha conta',
+            'delete_warning' => 'Sua conta será marcada para exclusão e apagada em 30 dias. Basta entrar de novo nesse período para cancelar.',
+            'cancel'         => 'Cancelar',
+            'delete_confirm' => 'Excluir',
+        ],
     ],
 
     'question' => [

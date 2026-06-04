@@ -265,6 +265,57 @@
             </div>
         @endif
 
+        {{-- ─ TAB: CONTA ─ --}}
+        @if ($tab === HomeTab::Conta)
+            <div style="flex:1; min-height:0; display:flex; flex-direction:column; overflow-y:auto; padding:50px 20px 90px; gap:16px;">
+                <h1 style="font-family:'Cinzel',serif; font-size:22px; color:rgba(255,255,255,0.9); text-align:center;">{{ __('messages.home.account.title') }}</h1>
+
+                @php
+                    $infoRow = 'display:flex; justify-content:space-between; align-items:center; gap:12px; padding:13px 15px; border-radius:13px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);';
+                    $infoLabel = 'font-size:11px; color:rgba(255,255,255,0.4); text-transform:uppercase; letter-spacing:0.08em; flex-shrink:0;';
+                    $secBtn = 'width:100%; padding:13px; border-radius:13px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:rgba(255,255,255,0.72); font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; gap:9px; cursor:pointer;';
+                @endphp
+
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <div style="{{ $infoRow }}">
+                        <span style="{{ $infoLabel }}">{{ __('messages.home.account.username') }}</span>
+                        <span style="font-size:14px; color:rgba(255,255,255,0.85); font-weight:600;">{{ $nickname ?: '—' }}</span>
+                    </div>
+                    <div style="{{ $infoRow }}">
+                        <span style="{{ $infoLabel }}">{{ __('messages.home.account.email') }}</span>
+                        <span style="font-size:13px; color:rgba(255,255,255,0.75); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ $email ?: '—' }}</span>
+                    </div>
+                    <div style="{{ $infoRow }}">
+                        <span style="{{ $infoLabel }}">{{ __('messages.home.account.version') }}</span>
+                        <span style="font-size:13px; color:rgba(255,255,255,0.6); font-family:monospace;">{{ $appVersion ?: '—' }}</span>
+                    </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <button wire:click="openSupport" nb-feedback style="{{ $secBtn }}"><x-nativeblade-icon name="lifebuoy" size="16"/> {{ __('messages.home.account.support') }}</button>
+                    <button wire:click="confirmLogout" nb-feedback style="{{ $secBtn }}"><x-nativeblade-icon name="sign-out" size="16"/> {{ __('messages.home.account.logout') }}</button>
+                </div>
+
+                {{-- Danger zone: delete account (two-step confirm). x-show sits on the
+                     wrappers, never on the flex button, so it doesn't clobber its layout. --}}
+                <div x-data="{ confirm: false }" style="margin-top:auto;">
+                    <div x-show="! confirm">
+                        <button @click="confirm = true" type="button" nb-feedback
+                            style="width:100%; padding:13px; border-radius:13px; background:transparent; border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; gap:9px; cursor:pointer;">
+                            <x-nativeblade-icon name="trash" size="16"/> {{ __('messages.home.account.delete') }}
+                        </button>
+                    </div>
+                    <div x-show="confirm" style="display:none; padding:14px; border-radius:13px; background:rgba(239,68,68,0.07); border:1px solid rgba(239,68,68,0.25);">
+                        <p style="font-size:13px; color:#fca5a5; line-height:1.55; margin-bottom:12px; text-align:center;">{{ __('messages.home.account.delete_warning') }}</p>
+                        <div style="display:flex; gap:8px;">
+                            <button @click="confirm = false" type="button" style="flex:1; padding:12px; border-radius:11px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.7); font-weight:700; font-size:13px; cursor:pointer;">{{ __('messages.home.account.cancel') }}</button>
+                            <button wire:click="requestDeletion" type="button" style="flex:1; padding:12px; border-radius:11px; background:rgba(239,68,68,0.85); border:none; color:#fff; font-weight:700; font-size:13px; cursor:pointer;">{{ __('messages.home.account.delete_confirm') }}</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         {{-- ─ TAB BAR ─ --}}
         <div style="position:absolute; bottom:0; width:100%; background:rgba(6,6,10,0.94); backdrop-filter:blur(20px); border-top:1px solid rgba(255,255,255,0.06); padding-bottom:26px; padding-top:12px; display:flex; justify-content:space-around; z-index:50;">
             @foreach (HomeTab::cases() as $case)
@@ -275,8 +326,10 @@
                         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4 C6,4 4,10 4,14 C4,19 7,21 12,21 C17,21 20,19 20,14 C20,10 18,4 12,4 Z"/><circle cx="9" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.5" fill="currentColor" stroke="none"/></svg>
                     @elseif ($case === HomeTab::Genoma)
                         <x-nativeblade-icon name="dna" size="22"/>
-                    @else
+                    @elseif ($case === HomeTab::Mesclar)
                         <x-nativeblade-icon name="shuffle" size="22"/>
+                    @else
+                        <x-nativeblade-icon name="user" size="22"/>
                     @endif
                     <span style="font-size:10px; font-weight:700; letter-spacing:0.04em;">{{ $case->label() }}</span>
                 </button>

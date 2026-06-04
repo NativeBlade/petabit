@@ -138,4 +138,12 @@ class PetabitApiClient
     {
         return $this->http()->post('/merge/accept', ['token' => $token])->json() ?? [];
     }
+
+    /* ---- account ---- */
+
+    /** Request account deletion (soft — purged after a grace period unless you log back in). */
+    public function deleteAccount(): array
+    {
+        return $this->http()->delete('/account')->throw()->json();
+    }
 }
