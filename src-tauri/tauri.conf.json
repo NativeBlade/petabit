@@ -1,0 +1,49 @@
+{
+    "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/dev/tooling/cli/schema.json",
+    "productName": "Petabit",
+    "version": "1.0.0",
+    "identifier": "com.petabit.app",
+    "build": {
+        "beforeDevCommand": "npx vite --config vite.wasm.config.js",
+        "devUrl": "http://localhost:1420",
+        "frontendDist": "../dist-wasm"
+    },
+    "app": {
+        "windows": [
+            {
+                "title": "Petabit",
+                "width": 1200,
+                "height": 800,
+                "center": false,
+                "resizable": true,
+                "fullscreen": false,
+                "minWidth": 800,
+                "minHeight": 600,
+                "decorations": true,
+                "transparent": false,
+                "alwaysOnTop": false,
+                "maximized": false
+            }
+        ],
+        "withGlobalTauri": true,
+        "security": {
+            "csp": null
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": "all",
+        "resources": [
+            "../.env",
+            "menu.json",
+            "tray.json"
+        ],
+        "icon": [
+            "icons/32x32.png",
+            "icons/128x128.png",
+            "icons/128x128@2x.png",
+            "icons/icon.icns",
+            "icons/icon.ico"
+        ]
+    }
+}

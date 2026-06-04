@@ -1,0 +1,5 @@
+# app/Native/State
+#
+# Typed wrappers over NativeBlade::setState/getState. Mandatory: never use string-literal state keys.
+#
+# See ARCHITECTURE.md in the NativeBlade docs for the full pattern.

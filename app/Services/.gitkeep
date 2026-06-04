@@ -1,0 +1,5 @@
+# app/Services
+#
+# Business logic. PHP-pure services called by Livewire components.
+#
+# See ARCHITECTURE.md in the NativeBlade docs for the full pattern.

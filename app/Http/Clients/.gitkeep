@@ -1,0 +1,5 @@
+# app/Http/Clients
+#
+# HTTP clients for EXTERNAL APIs (Stripe, Sentry, etc.). Not for the app's own backend.
+#
+# See ARCHITECTURE.md in the NativeBlade docs for the full pattern.

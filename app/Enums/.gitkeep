@@ -1,0 +1,5 @@
+# app/Enums
+#
+# PHP enums for closed sets (status, type, role). No string literals in business code.
+#
+# See ARCHITECTURE.md in the NativeBlade docs for the full pattern.

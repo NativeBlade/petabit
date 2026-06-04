@@ -1,0 +1,60 @@
+/* Petabit flow — ported verbatim from the mockup's _group.css so the design's
+   animations stay pixel/timing identical (the framework's animate__* helpers
+   use different durations). */
+
+/* Cinzel — served locally from public/fonts (offline). */
+@font-face { font-family: 'Cinzel'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/cinzel/cinzel-400.woff2') format('woff2'); }
+@font-face { font-family: 'Cinzel'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/cinzel/cinzel-600.woff2') format('woff2'); }
+@font-face { font-family: 'Cinzel'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/cinzel/cinzel-700.woff2') format('woff2'); }
+
+@keyframes pb-pulse-egg {
+    0%, 100% { filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.4)); transform: scale(1); }
+    50% { filter: drop-shadow(0 0 30px rgba(255, 255, 255, 0.8)); transform: scale(1.02); }
+}
+
+@keyframes pb-float-pet {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+@keyframes pb-fade-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pb-glow-burst {
+    0% { opacity: 0; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0.8; transform: scale(1); }
+}
+
+/* Staggered pulse for the "analyzing" dots (implied by the mockup's per-dot
+   animation-delay; the keyframe itself was missing there). */
+@keyframes pb-dot-pulse {
+    0%, 100% { opacity: 0.25; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.15); }
+}
+
+.pb-animate-pulse-egg {
+    animation: pb-pulse-egg 4s ease-in-out infinite;
+}
+
+.pb-animate-float-pet {
+    animation: pb-float-pet 4s ease-in-out infinite;
+}
+
+.pb-animate-fade-in {
+    animation: pb-fade-in 0.8s ease-out forwards;
+}
+
+.pb-animate-glow-burst {
+    animation: pb-glow-burst 2s ease-out forwards;
+}
+
+.pb-animate-dot-pulse {
+    animation: pb-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.pb-font-cinzel {
+    font-family: 'Cinzel', serif;
+}

@@ -1,0 +1,5 @@
+# app/Repositories
+#
+# Data access for external MySQL/Postgres. Local SQLite uses Eloquent direct.
+#
+# See ARCHITECTURE.md in the NativeBlade docs for the full pattern.

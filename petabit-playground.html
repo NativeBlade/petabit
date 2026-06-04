@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Petabit · Playground de Genoma</title>
+<style>
+/* ============================================================
+   PETABIT — PLAYGROUND DE GENOMA (standalone)
+   ------------------------------------------------------------
+   Tudo que define a aparência mora no objeto G (o "genoma").
+   O genoma é só DADO (nomes de mutação, cor, alinhamento).
+   buildPet() lê o genoma e empilha camadas SVG.
+   Quando portar pro NativeBlade:
+     - G                -> coluna JSON `genome` na tabela pets
+     - CAT              -> catálogo de mutações (tier + afinidade)
+     - rollGroup()      -> sorteador server-side (mesma seed = mesmo bicho)
+     - buildPet()       -> componente Blade <x-petabit :genome=...>
+     - paintAura()      -> camada de animação (CSS hoje; trocável por canvas/lib)
+   ============================================================ */
+
+:root{
+  --bg:#14121c; --panel:#1d1a28; --panel2:#251f33; --line:#332c45;
+  --txt:#e9e4f2; --txt2:#a89fc0; --txt3:#6f6688;
+  --info:#b79cff; --infobg:#2a2440;
+  --radius:12px; --radius-sm:8px;
+  --font: ui-rounded, "Segoe UI", system-ui, sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--font);padding:20px}
+h1{font-size:22px;font-weight:600;margin:0 0 2px;letter-spacing:.04em}
+.sub{color:var(--txt3);font-size:13px;margin:0 0 18px}
+.wrap{display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start;max-width:980px}
+@media(max-width:680px){.wrap{grid-template-columns:1fr}}
+
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px;display:flex;flex-direction:column;align-items:center;gap:10px;position:sticky;top:16px}
+.box{position:relative;width:100%;max-width:240px;height:300px}
+.aura{position:absolute;inset:0;overflow:hidden;border-radius:14px}     /* camada da aura */
+.pet{position:relative;z-index:2;height:100%;display:flex;align-items:center;justify-content:center}
+.name{font-size:20px;font-weight:600}
+.align-name{font-size:14px;font-weight:600}
+.badges{display:flex;gap:5px;flex-wrap:wrap;justify-content:center}
+.badge{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px}
+.card h3{font-size:12px;font-weight:600;color:var(--txt2);margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em}
+label{font-size:12px;color:var(--txt2);display:block;margin:8px 0 6px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+
+button{font:inherit}
+.seg{font-size:12px;padding:5px 10px;border-radius:var(--radius-sm);border:1px solid var(--line);
+  background:transparent;color:var(--txt2);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.seg:hover{border-color:var(--txt3)}
+.seg.on{border-color:var(--info);background:var(--infobg);color:var(--info)}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.sw{width:20px;height:20px;border-radius:50%;cursor:pointer;border:2px solid transparent}
+.sw.on{border-color:var(--txt)}
+input[type=range]{width:100%;accent-color:var(--info)}
+input[type=color]{width:34px;height:28px;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer;padding:2px;vertical-align:middle}
+.btn{width:100%;padding:11px;border-radius:var(--radius-sm);border:1px solid var(--info);
+  background:var(--infobg);color:var(--info);font-weight:600;cursor:pointer;font-size:13px}
+.btn:hover{filter:brightness(1.12)}
+.scale-line{font-size:11px;color:var(--txt3);text-align:center}
+.ends{display:flex;justify-content:space-between;font-size:11px;color:var(--txt3);margin-top:4px}
+.json{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);background:var(--panel2);
+  border-radius:var(--radius-sm);padding:10px;white-space:pre-wrap;line-height:1.45;max-height:200px;overflow:auto}
+
+/* ---- CAMADA DA AURA (tsParticles + halo opcional) ----
+   #auraParticles recebe o canvas do tsParticles (ver paintAura()).
+   .aura-halo é um brilho de fundo opcional (genoma aura.halo). */
+#auraParticles{position:absolute;inset:0}
+.aura-halo{position:absolute;inset:0;border-radius:14px;display:none;pointer-events:none}
+@media (prefers-reduced-motion: no-preference){
+  .aura-halo{animation:halo-pulse 6s ease-in-out infinite}
+}
+/* pulsação lenta e gentil — variação pequena de brilho, sem flash */
+@keyframes halo-pulse{0%,100%{opacity:.55;transform:scale(.98)}50%{opacity:.72;transform:scale(1.02)}}
+</style>
+<!-- Motor de partículas da aura. Bundle único = traz todas as shapes (estrela, coração, polígono…). -->
+<script src="https://cdn.jsdelivr.net/npm/tsparticles@2.12.0/tsparticles.bundle.min.js"></script>
+</head>
+<body>
+<h1>Petabit · Playground de Genoma</h1>
+<p class="sub">Gere ou edite um pet. Asas, chifres e cauda crescem com a intensidade do alinhamento. O JSON embaixo é o genoma que vai pro banco.</p>
+
+<div class="wrap">
+  <div class="stage">
+    <div class="box">
+      <div class="aura" id="auraLayer">
+        <div class="aura-halo" id="auraHalo"></div>
+        <div id="auraParticles"></div>
+      </div>
+      <div class="pet" id="holder"></div>
+    </div>
+    <div class="name" id="petName"></div>
+    <div class="align-name" id="epithet" style="color:var(--info)"></div>
+    <div class="align-name" id="stageLabel" style="color:var(--txt2);font-weight:500"></div>
+    <div class="align-name" id="alignLabel"></div>
+    <div class="badges" id="rarityLine"></div>
+    <button class="btn" onclick="roll()">⚄ Sortear (puxa do alinhamento)</button>
+  </div>
+
+  <div>
+    <div class="card">
+      <h3>Alinhamento emocional</h3>
+      <input type="range" id="align" min="-100" max="100" value="20" step="1" oninput="onAlign(+this.value)">
+      <div class="ends"><span>Trevas</span><span>Neutro</span><span>Luz</span></div>
+      <p class="scale-line" id="scaleInfo"></p>
+    </div>
+    <div class="card">
+      <h3>Ciclo de vida <span style="font-weight:400;color:var(--txt3);text-transform:none">(resposta → bem/mal → alinhamento → cresce)</span></h3>
+      <p class="scale-line" style="text-align:left;margin:0 0 8px">Nascimento → Origem → Crescimento → Adulta → Velha → Morte → <b style="color:var(--info)">Renascimento</b>. Máx. 2 por fase, nunca regride.</p>
+      <div class="row">
+        <button class="seg" onclick="respond('luz')">☀ Resposta de Luz</button>
+        <button class="seg" onclick="respond('trevas')">🌑 Resposta de Trevas</button>
+        <button class="seg" onclick="respond('caos')">⚡ Caótica</button>
+      </div>
+      <div class="row" style="margin-top:6px"><button class="seg" onclick="birth();renderControls();draw()">🐣 Nova vida (nascer)</button></div>
+      <p class="scale-line" id="lifeLog" style="text-align:left;color:var(--info);min-height:14px"></p>
+    </div>
+    <div class="card">
+      <h3>Energia · aura <span style="font-weight:400;color:var(--txt3);text-transform:none">(tsParticles)</span></h3>
+      <label>Tipo</label><div class="row" id="auraType"></div>
+      <label>Cor <input type="color" id="auraColor" oninput="G.aura.color=this.value;paintAura();writeJson()"></label>
+      <label>Forma da partícula</label><div class="row" id="auraShape"></div>
+      <label>Movimento</label><div class="row" id="auraDir"></div>
+      <label>Mistura (blend)</label><div class="row" id="auraBlend"></div>
+      <label>Intensidade</label><div class="row" id="auraInten"></div>
+      <div id="auraSliders"></div>
+      <label>Efeitos</label><div class="row" id="auraToggles"></div>
+    </div>
+    <div class="card">
+      <h3>Asas · energia (cor livre)</h3>
+      <div class="row" id="wingType"></div>
+      <label>Quantidade (1 lado / par)</label><div class="row" id="wingCount"></div>
+      <label>Cor <input type="color" id="wingColor" oninput="G.wings.color=this.value;draw()"></label>
+    </div>
+    <div class="card">
+      <h3>Corpo · carne</h3>
+      <label>Tipo de corpo</label><div class="row" id="bodyType"></div>
+      <label>Cor</label><div class="row" id="bodyColor"></div>
+      <label>Proporção (bolinha)</label><div class="row" id="bodyShape"></div>
+    </div>
+    <div class="card">
+      <h3>Membros e cabeça · carne</h3>
+      <label>Orelhas / chifres</label><div class="row" id="ears"></div>
+      <label>Bracinhos</label><div class="row" id="arms"></div>
+      <label>Rabo</label><div class="row" id="tail"></div>
+      <label>Patinhas</label><div class="row" id="legs"></div>
+    </div>
+    <div class="card">
+      <h3>Rosto e detalhes</h3>
+      <label>Olhos</label><div class="row" id="eyeCount"></div>
+      <label>Formato do olho</label><div class="row" id="eyeStyle"></div>
+      <label>Cor do olho</label><div class="row" id="eyeColor"></div>
+      <label>2ª cor · heterocromia</label><div class="row" id="eyeColor2"></div>
+      <div class="row" id="eyeToggles" style="margin-top:6px"></div>
+      <label>Focinho / bico</label><div class="row" id="snoutRow"></div>
+      <label>Destaque</label><div class="row" id="accColor"></div>
+      <div class="row" id="toggles" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <h3>Identidade <span style="font-weight:400;color:var(--txt3);text-transform:none">(semente · pelagem · marcas)</span></h3>
+      <label>Semente <b id="seedVal" style="color:var(--info);font-weight:600"></b> <span style="color:var(--txt3)">(impressão digital — muda posições)</span></label>
+      <div class="row"><button class="seg" onclick="newSeed()">⟳ Nova semente</button></div>
+      <label>Pelagem (procedural)</label><div class="row" id="patternRow"></div>
+      <label>Marcas / cicatrizes</label><div class="row" id="marksRow"></div>
+    </div>
+    <div class="card">
+      <h3>Raridade <span style="font-weight:400;color:var(--txt3);text-transform:none">(peso × afinidade)</span></h3>
+      <div class="row" id="rarLegend" style="margin-bottom:8px"></div>
+      <div class="json" id="json"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============ PALETAS ============ */
+/* Carne: tem cor coerente (corpo pinta cabeça/membros/orelhas/rabo). aff = afinidade de alinhamento. */
+const PAL={creme:{m:'#F1E6CC',d:'#c4b083',l:'#FAF3E2',aff:'any'},manteiga:{m:'#F6D26B',d:'#c79a2a',l:'#FCEBAE',aff:'bem'},pessego:{m:'#F4B49B',d:'#cf7f5e',l:'#FAD6C6',aff:'any'},menta:{m:'#A4DEBD',d:'#5fa97f',l:'#CCEEDB',aff:'neutro'},ceu:{m:'#A6CBEF',d:'#5e8fc4',l:'#CEE2F6',aff:'bem'},lavanda:{m:'#C7B4E6',d:'#8f73c0',l:'#DFD2F1',aff:'neutro'},rosa:{m:'#F1B3C6',d:'#cf7593',l:'#F7D1DD',aff:'bem'},cinza:{m:'#C2C6CF',d:'#868c98',l:'#DDE0E5',aff:'neutro'},neve:{m:'#F2F4F8',d:'#b9c0cc',l:'#FFFFFF',aff:'bem'},dourado:{m:'#E8C566',d:'#a8861f',l:'#F6E6AE',aff:'bem'},vinho:{m:'#9E5566',d:'#5e2c3a',l:'#C58294',aff:'mau'},carvao:{m:'#5A5566',d:'#322f3c',l:'#807a8c',aff:'mau'},petroleo:{m:'#5E8C92',d:'#34565a',l:'#8FB6BB',aff:'neutro'},ametista:{m:'#9B7BC2',d:'#5e4486',l:'#C4ABE0',aff:'neutro'}};
+const PK=Object.keys(PAL);
+const EYE={noite:'#3A3340',cacau:'#5A4632',azul:'#3F6FA3',ambar:'#C68A2E',verde:'#4E8C5A',carmim:'#9E3B4E',roxo:'#6A4A9E',gelo:'#9FCBE8',fogo:'#D9722E',ouro:'#D4A82E',rosa:'#D86A9E',turquesa:'#2EA6A6'};
+const EK=Object.keys(EYE);
+/* estilos de olho (forma/expressão) — não têm raridade, são livres */
+const EYE_STYLES=['redondo','amendoado','gatinho','feliz','sonolento','estrela'];
+const EYE_STYLE_L={redondo:'● Redondo',amendoado:'◑ Amendoado',gatinho:'❘ Gatinho',feliz:'^ Feliz',sonolento:'⌒ Sonolento',estrela:'✦ Estrela'};
+const ACC={blush:'#F19BA6',coral:'#EF8268',dourado:'#F2C94C',menta:'#8FE0BA',ceu:'#8FC2F2',lilas:'#C9A8E8',carmim:'#C95B6E',gelo:'#BFE3F2'};
+const AK=Object.keys(ACC);
+
+/* ============ CATÁLOGO DE MUTAÇÕES ============ */
+/* r = raridade (tier) | a = afinidade de alinhamento (bem/neutro/mau/any) */
+const CAT={
+  wings:[
+    {id:'nenhuma',l:'Nenhuma',r:'comum',a:'any'},
+    {id:'neutra',l:'Neutra',r:'comum',a:'neutro'},
+    {id:'penas',l:'Penas',r:'incomum',a:'bem'},
+    {id:'borboleta',l:'Borboleta',r:'incomum',a:'neutro'},
+    {id:'morcego',l:'Morcego',r:'incomum',a:'mau'},
+    {id:'fada',l:'Fada',r:'incomum',a:'bem'},
+    {id:'libelula',l:'Libélula',r:'incomum',a:'neutro'},
+    {id:'folha',l:'Folha',r:'incomum',a:'bem'},
+    {id:'coracao',l:'Coração',r:'incomum',a:'bem'},
+    {id:'anjo',l:'Anjo',r:'raro',a:'bem'},
+    {id:'demonio',l:'Demônio',r:'raro',a:'mau'},
+    {id:'gelo',l:'Gelo',r:'raro',a:'neutro'},
+    {id:'cristal',l:'Cristal',r:'lendario',a:'neutro'},
+    {id:'dragao',l:'Dragão',r:'lendario',a:'mau'},
+    {id:'fenix',l:'Fênix',r:'lendario',a:'mau'}
+  ],
+  ears:[
+    {id:'nenhuma',l:'Nenhuma',r:'comum',a:'any'},
+    {id:'round',l:'Redonda',r:'comum',a:'bem'},
+    {id:'gato',l:'Gato',r:'comum',a:'any'},
+    {id:'urso',l:'Urso',r:'comum',a:'bem'},
+    {id:'caida',l:'Caída',r:'incomum',a:'bem'},
+    {id:'pontuda',l:'Pontuda',r:'incomum',a:'neutro'},
+    {id:'coelho',l:'Coelho',r:'incomum',a:'bem'},
+    {id:'raposa',l:'Raposa',r:'incomum',a:'neutro'},
+    {id:'chifrinho',l:'Chifrinho',r:'raro',a:'mau'},
+    {id:'unicornio',l:'Unicórnio',r:'raro',a:'bem'},
+    {id:'chifres',l:'Chifrões',r:'lendario',a:'mau'}
+  ],
+  tail:[
+    {id:'nenhum',l:'Nenhum',r:'comum',a:'any'},
+    {id:'curl',l:'Enroladinho',r:'comum',a:'any'},
+    {id:'poof',l:'Bolinha',r:'comum',a:'bem'},
+    {id:'gatinho',l:'Gatinho',r:'comum',a:'any'},
+    {id:'tufo',l:'Tufo',r:'incomum',a:'neutro'},
+    {id:'pena',l:'Penacho',r:'incomum',a:'bem'},
+    {id:'espinho',l:'Espinho',r:'incomum',a:'mau'},
+    {id:'peixe',l:'Sereia',r:'raro',a:'neutro'},
+    {id:'raio',l:'Raio',r:'raro',a:'mau'},
+    {id:'chamas',l:'Chamas',r:'raro',a:'mau'},
+    {id:'diabo',l:'Diabinho',r:'raro',a:'mau'},
+    {id:'estrela',l:'Estrela',r:'lendario',a:'bem'}
+  ],
+  arms:[
+    {id:'nenhum',l:'Não',r:'comum',a:'any'},
+    {id:'patinha',l:'Patinha',r:'comum',a:'bem'},
+    {id:'garrinha',l:'Garrinha',r:'incomum',a:'mau'},
+    {id:'tentaculo',l:'Tentáculo',r:'incomum',a:'neutro'}
+  ],
+  legs:[
+    {id:'nenhuma',l:'Não',r:'comum',a:'any'},
+    {id:'oval',l:'Pezinho',r:'comum',a:'any'},
+    {id:'patinha',l:'Patinha',r:'comum',a:'bem'},
+    {id:'garrinha',l:'Garrinha',r:'incomum',a:'mau'},
+    {id:'botinha',l:'Botinha',r:'incomum',a:'neutro'}
+  ],
+  body:[
+    {id:'round',l:'Redondo',r:'comum',a:'any'},
+    {id:'ovo',l:'Ovo',r:'comum',a:'any'},
+    {id:'fofo',l:'Fofinho',r:'comum',a:'bem'},
+    {id:'gota',l:'Gota',r:'incomum',a:'neutro'}
+  ],
+  bodyType:[
+    {id:'bolinha',l:'Bolinha',r:'comum',a:'any'},
+    {id:'comprido',l:'Comprido',r:'comum',a:'neutro'},
+    {id:'pera',l:'Pêra',r:'comum',a:'any'},
+    {id:'cabecudo',l:'Cabeçudo',r:'incomum',a:'bem'},
+    {id:'passaro',l:'Passarinho',r:'incomum',a:'bem'},
+    {id:'cubo',l:'Geleia',r:'incomum',a:'neutro'},
+    {id:'cogumelo',l:'Cogumelo',r:'incomum',a:'bem'},
+    {id:'nuvem',l:'Nuvem',r:'incomum',a:'bem'},
+    {id:'pudim',l:'Pudim',r:'incomum',a:'any'},
+    {id:'pinguim',l:'Pinguim',r:'incomum',a:'bem'},
+    {id:'boneco',l:'Boneco',r:'incomum',a:'neutro'},
+    {id:'gota',l:'Gotinha',r:'comum',a:'neutro'},
+    {id:'fantasma',l:'Fantasma',r:'raro',a:'mau'},
+    {id:'quadrupede',l:'Quadrúpede',r:'raro',a:'any'},
+    {id:'cobrinha',l:'Cobrinha',r:'raro',a:'mau'},
+    {id:'cacto',l:'Cacto',r:'raro',a:'neutro'},
+    {id:'dino',l:'Dino',r:'raro',a:'mau'},
+    {id:'estrela',l:'Estrela',r:'lendario',a:'bem'},
+    {id:'coracao',l:'Coração',r:'lendario',a:'bem'},
+    {id:'lua',l:'Lua',r:'lendario',a:'neutro'}
+  ],
+  snout:[
+    {id:'nenhum',l:'Nenhum',r:'comum',a:'any'},
+    {id:'focinho',l:'Focinho',r:'comum',a:'neutro'},
+    {id:'bico',l:'Bico',r:'incomum',a:'bem'},
+    {id:'bico_longo',l:'Bico longo',r:'raro',a:'neutro'}
+  ],
+  aura:[
+    {id:'nenhuma',l:'Nenhuma',r:'comum',a:'any'},
+    {id:'fumaca',l:'Fumaça',r:'comum',a:'neutro'},
+    {id:'poeira',l:'Poeira',r:'comum',a:'neutro'},
+    {id:'luz',l:'Luz',r:'incomum',a:'bem'},
+    {id:'neutra',l:'Energia',r:'incomum',a:'neutro'},
+    {id:'bolhas',l:'Bolhas',r:'incomum',a:'bem'},
+    {id:'petalas',l:'Pétalas',r:'incomum',a:'bem'},
+    {id:'estrelas',l:'Estrelas',r:'incomum',a:'neutro'},
+    {id:'fogo',l:'Fogo',r:'raro',a:'mau'},
+    {id:'sombra',l:'Sombra',r:'raro',a:'mau'},
+    {id:'relampago',l:'Relâmpago',r:'raro',a:'neutro'},
+    {id:'neon',l:'Neon',r:'raro',a:'neutro'},
+    {id:'gelo',l:'Gelo',r:'raro',a:'neutro'},
+    {id:'veneno',l:'Veneno',r:'raro',a:'mau'},
+    {id:'sagrada',l:'Sagrada',r:'lendario',a:'bem'},
+    {id:'galaxia',l:'Galáxia',r:'lendario',a:'neutro'},
+    {id:'aurora',l:'Aurora',r:'lendario',a:'bem'},
+    {id:'vortex',l:'Vórtice',r:'lendario',a:'mau'},
+    {id:'arcoiris',l:'Arco-íris',r:'lendario',a:'bem'}
+  ]
+};
+const RAR_W={comum:60,incomum:26,raro:11,lendario:3};        /* pesos base do sorteio */
+const RAR_C={comum:'#9aa0aa',incomum:'#5e8fc4',raro:'#a98fe0',lendario:'#e0b54a'};
+const RAR_L={comum:'Comum',incomum:'Incomum',raro:'Raro',lendario:'Lendário'};
+const RAR_ORD={comum:0,incomum:1,raro:2,lendario:3};
+const RAR_TO_INTEN={comum:'baixa',incomum:'media',raro:'alta',lendario:'maxima'};
+
+/* ============ PRESETS DE AURA (assinatura de cada tipo) ============
+   Cada preset preenche os knobs do genoma aura. Ao escolher/sortear um tipo,
+   applyAuraPreset() copia estes valores pro genoma — então o JSON sozinho
+   descreve 100% da aura (fácil de uma IA editar). Campos:
+     color   cor base (hex)            shape    forma da partícula
+     density nº de partículas (0-80)   direction up|down|drift|swirl
+     speed   velocidade (0-6)          blend    modo de mistura CSS
+     size    tamanho px                glow     brilho/halo da partícula (0-1)
+     opacity opacidade (0-1)           spin/twinkle/hueShift/halo  (bool) */
+/* NOTA DE ACESSIBILIDADE: velocidades propositalmente BAIXAS e suaves.
+   Nada deve se mover rápido nem piscar (risco a pessoas fotossensíveis).
+   auraOptions() ainda aplica um teto global e respeita prefers-reduced-motion. */
+const AURA_PRESETS={
+  nenhuma  :{},
+  fumaca   :{color:'#9aa0aa',shape:'circle',  direction:'up',   speed:0.35,size:12,density:14,glow:0.05,opacity:0.18,blend:'screen'},
+  poeira   :{color:'#cfc8d8',shape:'circle',  direction:'drift',speed:0.25,size:3, density:24,glow:0.10,opacity:0.50,blend:'normal'},
+  luz      :{color:'#F4D06A',shape:'circle',  direction:'up',   speed:0.45,size:4, density:22,glow:0.60,opacity:0.80,blend:'screen',       twinkle:true},
+  neutra   :{color:'#7FC8D8',shape:'circle',  direction:'up',   speed:0.6, size:3, density:26,glow:0.40,opacity:0.70,blend:'screen'},
+  bolhas   :{color:'#BFE3F2',shape:'circle',  direction:'up',   speed:0.5, size:8, density:16,glow:0.20,opacity:0.45,blend:'screen'},
+  petalas  :{color:'#F1B3C6',shape:'petal',   direction:'down', speed:0.5, size:8, density:16,glow:0.10,opacity:0.85,blend:'normal',       spin:true},
+  estrelas :{color:'#F6E08A',shape:'star',    direction:'drift',speed:0.2, size:5, density:18,glow:0.55,opacity:0.90,blend:'screen',       twinkle:true},
+  fogo     :{color:'#E8703A',shape:'circle',  direction:'up',   speed:0.8, size:4, density:34,glow:0.75,opacity:0.80,blend:'plus-lighter'},
+  sombra   :{color:'#6A4A86',shape:'circle',  direction:'up',   speed:0.35,size:14,density:16,glow:0.10,opacity:0.22,blend:'multiply'},
+  relampago:{color:'#9FD8FF',shape:'star',    direction:'drift',speed:0.7, size:3, density:22,glow:0.85,opacity:0.85,blend:'plus-lighter', twinkle:true},
+  neon     :{color:'#37F2C8',shape:'circle',  direction:'drift',speed:0.6, size:4, density:28,glow:0.90,opacity:0.85,blend:'plus-lighter'},
+  gelo     :{color:'#CFEAF7',shape:'star',    direction:'down', speed:0.45,size:5, density:18,glow:0.45,opacity:0.80,blend:'screen',       spin:true},
+  veneno   :{color:'#8FE0BA',shape:'circle',  direction:'up',   speed:0.5, size:7, density:18,glow:0.50,opacity:0.50,blend:'screen'},
+  sagrada  :{color:'#F6E08A',shape:'circle',  direction:'up',   speed:0.45,size:4, density:26,glow:0.80,opacity:0.85,blend:'plus-lighter', twinkle:true, halo:true},
+  galaxia  :{color:'#C4ABE0',shape:'star',    direction:'swirl',speed:0.5, size:3, density:38,glow:0.60,opacity:0.85,blend:'plus-lighter', spin:true},
+  aurora   :{color:'#8FE0BA',shape:'circle',  direction:'drift',speed:0.3, size:16,density:10,glow:0.50,opacity:0.30,blend:'screen'},
+  vortex   :{color:'#C95B6E',shape:'circle',  direction:'swirl',speed:0.6, size:4, density:30,glow:0.55,opacity:0.70,blend:'plus-lighter'},
+  arcoiris :{color:'#FF5E7E',shape:'circle',  direction:'up',   speed:0.55,size:5, density:28,glow:0.60,opacity:0.85,blend:'plus-lighter', hueShift:true}
+};
+/* opções de UI (e domínio válido pro genoma) */
+const SHAPES=['circle','star','heart','petal','triangle','square','polygon'];
+const SHAPE_L={circle:'● Bola',star:'✦ Estrela',heart:'♥ Coração',petal:'❀ Pétala',triangle:'▲ Tri',square:'■ Quadr',polygon:'⬡ Polí'};
+const DIRS=['up','down','drift','swirl'];
+const DIR_L={up:'↑ Sobe',down:'↓ Cai',drift:'✦ Flutua',swirl:'↻ Espiral'};
+const BLENDS=['normal','screen','lighten','plus-lighter','color-dodge','overlay','multiply'];
+const AURA_SLIDERS=[
+  {k:'density',l:'Densidade',min:0,max:80,step:1},
+  {k:'speed',  l:'Velocidade',min:0,max:2,step:0.05},
+  {k:'size',   l:'Tamanho',min:1,max:18,step:0.5},
+  {k:'glow',   l:'Brilho',min:0,max:1,step:0.05},
+  {k:'opacity',l:'Opacidade',min:0.05,max:1,step:0.05}
+];
+const ALABEL=[[-100,'Trevas'],[-55,'Sombra'],[-33,'Neutro'],[34,'Luz'],[60,'Luz Pura']];
+
+/* ============ GENOMA (o estado, vai pro banco) ============ */
+let G={
+  seed:1234, alignment:20,
+  pattern:{type:'none'},          /* pelagem procedural (posições vêm da seed) */
+  marks:[],                        /* cicatrizes / sinais — cada um pode ter .cause (proveniência) */
+  body:{type:'bolinha',color:'manteiga',shape:'round'},
+  eyes:{count:2,color:'noite',color2:'azul',hetero:false,style:'redondo'},
+  snout:'nenhum',                  /* bico / focinho — parte do genoma (acessório NÃO é) */
+  wings:{type:'neutra',color:'#CFC4E8',count:2},   /* count: 0 nenhuma · 1 um lado · 2 par */
+  aura:{type:'fumaca',color:'#9aa0aa',inten:'baixa',
+        density:14,speed:0.8,size:12,glow:0.05,opacity:0.18,
+        blend:'screen',shape:'circle',direction:'up',
+        spin:false,twinkle:false,hueShift:false,halo:false},
+  arms:{present:true,style:'patinha'},
+  ears:{type:'round'}, legs:{present:true,style:'oval'}, tail:{type:'curl'},
+  accent:{color:'blush',mark:'barriga',cheeks:true},
+  extra:{antena:false}
+};
+
+/* ============ SORTEIO COM RARIDADE + ALINHAMENTO ============ */
+function band(v){return v<=-34?'mau':v>=34?'bem':'neutro';}
+/* afinidade casando com o alinhamento -> muito mais provável; oposta -> quase nunca */
+function affMult(a,b){if(a==='any')return 1;if(a===b)return 3.2;if((a==='bem'&&b==='mau')||(a==='mau'&&b==='bem'))return 0.12;return 0.55;}
+function rollGroup(group){
+  const b=band(G.alignment), opts=CAT[group];
+  let tot=0; const w=opts.map(o=>{const x=RAR_W[o.r]*affMult(o.a,b);tot+=x;return x;});
+  let r=Math.random()*tot;
+  for(let i=0;i<opts.length;i++){r-=w[i];if(r<=0)return opts[i].id;}
+  return opts[0].id;
+}
+function rarOf(group,id){const o=CAT[group].find(x=>x.id===id);return o?o.r:'comum';}
+
+/* ============ ESCALA POR INTENSIDADE DE ALINHAMENTO ============ */
+/* asas/chifres/cauda crescem quanto mais extremo o alinhamento (|valor|/100). */
+function intensity(){return Math.abs(G.alignment)/100;}            /* 0 (neutro) .. 1 (extremo) */
+function wingScale(){return 1 + intensity()*0.75;}                 /* até ~1.75x */
+function hornScale(){return 1 + intensity()*0.60;}                 /* até ~1.60x */
+function tailScale(){return 1 + intensity()*0.50;}                 /* até ~1.50x */
+
+/* helper: escala um trecho SVG em torno de um pivô (px,py) */
+function scaleAbout(frag,px,py,s){return '<g transform="translate('+px+','+py+') scale('+s+') translate('+(-px)+','+(-py)+')">'+frag+'</g>';}
+function darken(hex,f){const n=parseInt(hex.slice(1),16);let r=(n>>16)&255,g=(n>>8)&255,b=n&255;return '#'+((1<<24)+(Math.round(r*(1-f))<<16)+(Math.round(g*(1-f))<<8)+Math.round(b*(1-f))).toString(16).slice(1);}
+
+/* ============ FORMATOS DAS ASAS (coords locais, origem no encaixe) ============ */
+const WING={
+  neutra:'M0,0 C-14,-24 -34,-28 -38,-13 C-34,-2 -16,2 -2,-2 Z',
+  penas:'M0,0 C-12,-30 -32,-44 -46,-38 C-38,-30 -44,-26 -34,-24 C-46,-20 -42,-12 -32,-12 C-42,-6 -36,3 -26,-2 C-32,7 -22,8 -16,1 Z',
+  anjo:'M0,0 C-10,-40 -36,-58 -54,-50 C-44,-40 -52,-34 -40,-32 C-54,-27 -48,-15 -36,-15 C-48,-8 -40,5 -28,-2 C-36,9 -22,12 -16,2 C-12,10 -5,6 -5,-6 Z',
+  borboleta:'M0,0 C-32,-34 -56,-18 -46,4 C-52,18 -30,24 -16,8 C-22,20 -4,18 -2,4 Z',
+  morcego:'M0,0 L-42,-34 L-37,-21 L-28,-26 L-24,-12 L-15,-18 L-11,-4 L-3,-9 Z',
+  demonio:'M0,0 L-50,-44 L-43,-26 L-32,-32 L-28,-15 L-17,-22 L-12,-4 L-3,-11 Z',
+  dragao:'M0,-6 L-8,-30 L-14,-12 L-54,-48 L-47,-28 L-35,-34 L-31,-15 L-19,-23 L-13,-3 L-3,-10 Z',
+  cristal:'M0,0 L-16,-30 L-10,-12 L-30,-40 L-24,-16 L-44,-34 L-36,-12 L-18,-6 Z',
+  fada:'M0,0 C-20,-26 -42,-16 -36,2 C-44,8 -36,22 -22,16 C-26,26 -10,26 -8,12 C-2,18 4,10 0,0 Z',
+  libelula:'M0,-2 C-24,-12 -50,-12 -54,-5 C-50,2 -24,0 -2,2 Z M0,3 C-20,-1 -42,4 -46,11 C-40,16 -20,10 -2,6 Z',
+  folha:'M0,0 C-8,-24 -36,-30 -48,-18 C-42,-4 -18,-2 -2,-2 Z',
+  fenix:'M0,-4 L-10,-28 L-15,-12 L-32,-42 L-27,-22 L-46,-46 L-40,-24 L-56,-38 L-46,-16 L-32,-13 L-16,-7 Z',
+  coracao:'M-2,-2 C-6,-22 -28,-24 -30,-8 C-31,2 -22,8 -12,4 C-16,12 -4,16 -2,2 C0,12 6,4 2,-4 Z',
+  gelo:'M0,0 L-12,-26 L-8,-10 L-26,-30 L-20,-12 L-38,-26 L-30,-9 L-44,-20 L-36,-7 L-18,-4 Z'
+};
+function wingG(x,y,flip,type,color,s){
+  if(type==='nenhuma')return '';
+  const st=darken(color,0.32);
+  const sx=(flip?-s:s);
+  const tr='translate('+x+','+y+') scale('+sx+','+s+')';
+  return '<path transform="'+tr+'" d="'+WING[type]+'" fill="'+color+'" stroke="'+st+'" stroke-width="'+(2/s).toFixed(2)+'" stroke-linejoin="round"/>';
+}
+function star(cx,cy,r,c){let p='';for(let i=0;i<10;i++){const ang=-Math.PI/2+i*Math.PI/5,rr=i%2?r*0.45:r;p+=(i?'L':'M')+(cx+Math.cos(ang)*rr).toFixed(1)+','+(cy+Math.sin(ang)*rr).toFixed(1)+' ';}return '<path d="'+p+'Z" fill="'+c+'"/>';}
+
+/* desenha 1 olho com forma + cor próprias (col = cor desse olho, p/ heterocromia).
+   glow = cor do brilho (ex.: olhos de fogo / formas extremas) ou null. */
+function drawEye(x,eY,es,col,style,glow){
+  const G_=glow?'<circle cx="'+x+'" cy="'+eY+'" r="'+(es*1.9).toFixed(1)+'" fill="'+glow+'" opacity="0.28"/><circle cx="'+x+'" cy="'+eY+'" r="'+(es*1.35).toFixed(1)+'" fill="'+glow+'" opacity="0.3"/>':'';
+  if(style==='feliz')     return '<path d="M'+(x-es*0.9)+','+(eY+es*0.2)+' Q'+x+','+(eY-es*0.95)+' '+(x+es*0.9)+','+(eY+es*0.2)+'" fill="none" stroke="'+col+'" stroke-width="3.5" stroke-linecap="round"/>';
+  if(style==='sonolento') return '<path d="M'+(x-es)+','+eY+' A'+es+','+es+' 0 0 0 '+(x+es)+','+eY+' Z" fill="'+col+'"/><line x1="'+(x-es)+'" y1="'+eY+'" x2="'+(x+es)+'" y2="'+eY+'" stroke="'+col+'" stroke-width="2.5" stroke-linecap="round"/>';
+  if(style==='estrela')   return G_+star(x,eY,es*1.15,col)+'<circle cx="'+(x+es*0.22)+'" cy="'+(eY-es*0.22)+'" r="'+(es*0.24)+'" fill="#fff"/>';
+  if(style==='gatinho')   return G_+'<ellipse cx="'+x+'" cy="'+eY+'" rx="'+(es*0.78)+'" ry="'+es+'" fill="'+col+'"/><ellipse cx="'+x+'" cy="'+eY+'" rx="'+(es*0.22)+'" ry="'+(es*0.82)+'" fill="#1a1620"/><circle cx="'+(x+es*0.28)+'" cy="'+(eY-es*0.34)+'" r="'+(es*0.3)+'" fill="#fff"/>';
+  /* redondo (padrão) e amendoado */
+  const rxE=style==='amendoado'?es*0.82:es;
+  return G_+'<ellipse cx="'+x+'" cy="'+eY+'" rx="'+rxE+'" ry="'+es+'" fill="'+col+'"/><circle cx="'+(x+es*0.32)+'" cy="'+(eY-es*0.34)+'" r="'+(es*0.42)+'" fill="#fff"/><circle cx="'+(x-es*0.34)+'" cy="'+(eY+es*0.3)+'" r="'+(es*0.16)+'" fill="#fff" opacity="0.8"/>';
+}
+
+/* ============ RIG — ESQUELETO / ÂNCORAS (genoma.body.type -> pontos de encaixe) ============
+   Esta é a camada que destrava corpos diferentes SEM quebrar nada. Cada parte
+   (asa, orelha, cauda, pata, rosto) lê uma âncora nomeada daqui em vez de número
+   mágico. O arquétipo 'bolinha' devolve EXATAMENTE os valores antigos -> o bicho
+   de hoje fica idêntico. Tipos novos são só uma entrada nova + sua silhueta.
+   Para a mescla futura: misturar dois pets = combinar campos do genoma; o rig
+   recalcula as âncoras sozinho. Campos:
+     cx,cy,rx,ry  corpo (cauda/braços/pernas/marcas)   headCx,headTop,faceCy  cabeça
+     headW,headHalf  escala/largura da cabeça (olhos/orelhas)
+     wingY  altura das asas   legXs[]  posições dos pés (2 ou 4; vazio = sem pés)
+     arms  tem bracinhos?     tailX,tailY  base da cauda   drawBody(bc,bd)  silhueta */
+function rig(G){
+  const t=(G.body&&G.body.type)||'bolinha', sh=G.body.shape, cx=150;
+  let rx=50,ry=52,cy=178;
+  if(sh==='ovo'){rx=45;ry=58;cy=176;}
+  else if(sh==='fofo'){rx=57;ry=47;cy=182;}
+  else if(sh==='gota'){rx=47;ry=56;cy=178;}
+  const ell=(x,y,a,b,bc,bd)=>'<ellipse cx="'+x+'" cy="'+y+'" rx="'+a+'" ry="'+b+'" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/>';
+  const R={type:t,cx,rx,ry,cy,
+    headCx:cx,headTop:cy-ry+6,faceCy:cy-ry*0.30,headW:1,headHalf:rx,
+    wingY:cy-16,legY:cy+ry-2,legXs:[131,169],
+    arms:true,armY:cy-2,armLx:cx-rx,armRx:cx+rx,tailX:cx+rx,tailY:cy+ry,
+    drawBody:(bc,bd)=> sh==='gota'
+      ? '<path d="M'+cx+','+(cy-ry)+' C'+(cx-rx)+','+(cy-ry+12)+' '+(cx-rx)+','+(cy+ry)+' '+cx+','+(cy+ry)+' C'+(cx+rx)+','+(cy+ry)+' '+(cx+rx)+','+(cy-ry+12)+' '+cx+','+(cy-ry)+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/>'
+      : ell(cx,cy,rx,ry,bc,bd)};
+
+  if(t==='comprido'){const RX=42,RY=72,CY=170;
+    Object.assign(R,{rx:RX,ry:RY,cy:CY,headTop:CY-RY+8,faceCy:CY-RY*0.46,headW:0.9,headHalf:RX,
+      wingY:CY-34,legY:CY+RY-2,legXs:[138,162],armY:CY+10,armLx:cx-RX,armRx:cx+RX,
+      tailX:cx+RX,tailY:CY+RY,drawBody:(bc,bd)=>ell(cx,CY,RX,RY,bc,bd)});}
+
+  else if(t==='cabecudo'){const BRX=40,BRY=34,BCY=214,HR=44,HCY=150;
+    Object.assign(R,{rx:BRX,ry:BRY,cy:BCY,headCx:cx,headTop:HCY-HR+4,faceCy:HCY+6,headW:0.92,headHalf:HR,
+      wingY:BCY-BRY-2,legY:BCY+BRY-2,legXs:[135,165],armY:BCY-4,armLx:cx-BRX,armRx:cx+BRX,
+      tailX:cx+BRX,tailY:BCY+BRY,
+      drawBody:(bc,bd)=>ell(cx,BCY,BRX,BRY,bc,bd)
+        +'<path d="M'+(cx-11)+','+(HCY+HR-8)+' Q'+cx+','+(HCY+HR+10)+' '+(cx+11)+','+(HCY+HR-8)+' Z" fill="'+bc+'"/>'
+        +ell(cx,HCY,HR,HR-2,bc,bd)});}
+
+  else if(t==='passaro'){const RX=44,RY=56,CY=182;
+    Object.assign(R,{rx:RX,ry:RY,cy:CY,headTop:CY-RY+6,faceCy:CY-RY*0.36,headW:0.9,headHalf:RX,
+      wingY:CY-20,legY:CY+RY-2,legXs:[140,160],armY:CY-2,armLx:cx-RX,armRx:cx+RX,
+      tailX:cx+RX,tailY:CY+RY,drawBody:(bc,bd)=>ell(cx,CY,RX,RY,bc,bd)});}
+
+  else if(t==='cubo'){const RX=50,RY=48,CY=180,rad=18,L=cx-RX,T=CY-RY,hh=2*RX-2*rad,vv=2*RY-2*rad;
+    const rr='M'+(L+rad)+','+T+' h'+hh+' a'+rad+','+rad+' 0 0 1 '+rad+','+rad+' v'+vv+' a'+rad+','+rad+' 0 0 1 -'+rad+','+rad+' h-'+hh+' a'+rad+','+rad+' 0 0 1 -'+rad+',-'+rad+' v-'+vv+' a'+rad+','+rad+' 0 0 1 '+rad+',-'+rad+' z';
+    Object.assign(R,{rx:RX,ry:RY,cy:CY,headTop:CY-RY+8,faceCy:CY-RY*0.16,headW:1,headHalf:RX,
+      wingY:CY-16,legY:CY+RY-2,legXs:[128,172],armY:CY-2,armLx:cx-RX,armRx:cx+RX,
+      tailX:cx+RX,tailY:CY+RY,drawBody:(bc,bd)=>'<path d="'+rr+'" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>'});}
+
+  else if(t==='fantasma'){const RX=46,RY=54,CY=176;
+    Object.assign(R,{rx:RX,ry:RY,cy:CY,headTop:CY-RY+6,faceCy:CY-RY*0.20,headW:1,headHalf:RX,
+      wingY:CY-18,legY:CY+RY-2,legXs:[],armY:CY-2,armLx:cx-RX,armRx:cx+RX,tailX:cx+RX,tailY:CY+RY,
+      drawBody:(bc,bd)=>{const L=cx-RX,Rr=cx+RX,T=CY-RY,B=CY+RY-6,shY=T+28,w=(2*RX)/4;
+        let d='M'+L+','+shY+' Q'+L+','+T+' '+cx+','+T+' Q'+Rr+','+T+' '+Rr+','+shY+' L'+Rr+','+B;
+        for(let i=0;i<4;i++){d+=' q'+(-w/2)+','+(i%2===0?12:-12)+' '+(-w)+',0';}
+        return '<path d="'+d+' L'+L+','+shY+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>';}});}
+
+  else if(t==='quadrupede'){const RX=66,RY=38,CY=192;
+    Object.assign(R,{rx:RX,ry:RY,cy:CY,headCx:cx,headTop:CY-RY+2,faceCy:CY-RY*0.05,headW:1.05,headHalf:48,
+      wingY:CY-20,legY:CY+RY-2,legXs:[112,140,160,188],arms:false,armY:CY,armLx:cx-RX,armRx:cx+RX,
+      tailX:cx+RX-6,tailY:CY+RY-6,drawBody:(bc,bd)=>ell(cx,CY,RX,RY,bc,bd)});}
+
+  else if(t==='pera'){const RX=58,CY=196,TY=124,BY=232;   /* gota de cabeça pra cima: topo fino, base larga */
+    Object.assign(R,{rx:RX,ry:54,cy:CY,headTop:130,faceCy:168,headW:0.9,headHalf:44,
+      wingY:178,legY:228,legXs:[134,166],armY:190,armLx:cx-46,armRx:cx+46,tailX:cx+46,tailY:230,
+      drawBody:(bc,bd)=>'<path d="M'+cx+','+TY+' C96,150 92,'+BY+' '+cx+','+BY+' C208,'+BY+' 204,150 '+cx+','+TY+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>'});}
+
+  else if(t==='cogumelo'){const SRX=24,SRY=34,SCY=214,CAPY=150,CAPRX=54,CAPRY=36;   /* chapéu + caule */
+    Object.assign(R,{rx:SRX,ry:SRY,cy:SCY,headCx:cx,headTop:CAPY-CAPRY+4,faceCy:CAPY+2,headW:1,headHalf:48,
+      wingY:196,legY:SCY+SRY-2,legXs:[138,162],armY:SCY-6,armLx:cx-SRX,armRx:cx+SRX,tailX:cx+SRX,tailY:SCY+SRY,
+      drawBody:(bc,bd)=>ell(cx,SCY,SRX,SRY,bc,bd)
+        +ell(cx,CAPY,CAPRX,CAPRY,bc,bd)
+        +'<ellipse cx="'+(cx-22)+'" cy="'+(CAPY-6)+'" rx="9" ry="7" fill="'+darken(bc,0.06)+'"/><ellipse cx="'+(cx+20)+'" cy="'+(CAPY+2)+'" rx="7" ry="5" fill="'+darken(bc,0.06)+'"/>'});}
+
+  else if(t==='nuvem'){const RX=56,CY=184;   /* base + 3 bolotas fofas (flutua, sem pés) */
+    Object.assign(R,{rx:RX,ry:30,cy:CY,headTop:150,faceCy:CY,headW:1,headHalf:46,
+      wingY:166,legY:CY+28,legXs:[],arms:false,armY:CY,armLx:cx-RX,armRx:cx+RX,tailX:cx+RX,tailY:CY+24,
+      drawBody:(bc,bd)=>ell(cx,CY,RX,30,bc,bd)
+        +'<circle cx="116" cy="170" r="24" fill="'+bc+'"/><circle cx="'+cx+'" cy="158" r="30" fill="'+bc+'"/><circle cx="186" cy="172" r="22" fill="'+bc+'"/>'});}
+
+  else if(t==='cobrinha'){const HCY=120,HR=30;   /* corpo em S (tubo) + cabecinha; sem pés/braços */
+    const sp='M150,252 C124,230 178,206 150,182 C122,158 176,146 150,'+(HCY+18);
+    Object.assign(R,{rx:16,ry:50,cy:206,headCx:cx,headTop:HCY-HR+4,faceCy:HCY,headW:0.62,headHalf:HR,
+      wingY:180,legY:250,legXs:[],arms:false,armY:200,armLx:cx-30,armRx:cx+30,tailX:cx+24,tailY:248,
+      drawBody:(bc,bd)=>'<path d="'+sp+'" fill="none" stroke="'+bd+'" stroke-width="38" stroke-linecap="round"/>'
+        +'<path d="'+sp+'" fill="none" stroke="'+bc+'" stroke-width="32" stroke-linecap="round"/>'
+        +ell(cx,HCY,HR,HR-2,bc,bd)});}
+
+  else if(t==='estrela'){const CY=180,OR=66,IR=28;   /* corpo estrela de 5 pontas (flutua) */
+    Object.assign(R,{rx:40,ry:40,cy:CY,headTop:150,faceCy:184,headW:0.7,headHalf:34,
+      wingY:158,legY:CY+OR,legXs:[],arms:false,armY:CY,armLx:cx-40,armRx:cx+40,tailX:cx+40,tailY:CY+30,
+      drawBody:(bc,bd)=>{let p='';for(let i=0;i<10;i++){const ang=-Math.PI/2+i*Math.PI/5,rr=i%2?IR:OR;p+=(i?'L':'M')+(cx+Math.cos(ang)*rr).toFixed(1)+','+(CY+Math.sin(ang)*rr).toFixed(1)+' ';}return '<path d="'+p+'Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>';}});}
+
+  else if(t==='pudim'){const CY=196,TT=152,BB=234;   /* trapézio arredondado com calda de caramelo */
+    Object.assign(R,{rx:50,ry:42,cy:CY,headTop:158,faceCy:186,headW:0.9,headHalf:42,
+      wingY:176,legY:232,legXs:[134,166],armY:192,armLx:cx-46,armRx:cx+46,tailX:cx+46,tailY:230,
+      drawBody:(bc,bd)=>'<path d="M'+(cx-38)+','+TT+' L'+(cx+38)+','+TT+' L'+(cx+54)+','+(BB-8)+' Q'+(cx+54)+','+BB+' '+(cx+46)+','+BB+' L'+(cx-46)+','+BB+' Q'+(cx-54)+','+BB+' '+(cx-54)+','+(BB-8)+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>'
+        +'<path d="M'+(cx-40)+','+(TT+2)+' Q'+cx+','+(TT-12)+' '+(cx+40)+','+(TT+2)+' Q'+(cx+30)+','+(TT+14)+' '+(cx+12)+','+(TT+6)+' Q'+cx+','+(TT+16)+' '+(cx-14)+','+(TT+6)+' Q'+(cx-30)+','+(TT+14)+' '+(cx-40)+','+(TT+2)+' Z" fill="'+darken(bc,0.2)+'"/>'});}
+
+  else if(t==='cacto'){const CY=182,RX=32,RY=62;   /* cacto: corpo alto + 2 braços-lóbulo + espinhos (flutua, sem pés) */
+    Object.assign(R,{rx:RX,ry:RY,cy:CY,headTop:CY-RY+8,faceCy:CY-RY*0.34,headW:0.85,headHalf:RX,
+      wingY:CY-30,legY:CY+RY-2,legXs:[],arms:false,armY:CY,armLx:cx-RX,armRx:cx+RX,tailX:cx+RX,tailY:CY+RY,
+      drawBody:(bc,bd)=>{const rad=RX;
+        let spn='';for(let k=0;k<7;k++){const yy=(CY-RY+14)+k*((RY*1.6)/7);spn+='<path d="M'+cx+','+yy.toFixed(1)+' l5,-2 l-5,-2" fill="none" stroke="'+darken(bc,0.3)+'" stroke-width="1.2"/>';}
+        const main='<path d="M'+(cx-RX)+','+(CY-RY+rad)+' a'+rad+','+rad+' 0 0 1 '+(2*RX)+',0 v'+(2*RY-2*rad)+' a'+rad+','+rad+' 0 0 1 -'+(2*RX)+',0 z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/>';
+        const lobL='<path d="M'+(cx-RX+4)+','+(CY-6)+' q-22,-4 -22,-22 q0,-12 12,-10 q10,2 10,16 z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>';
+        const lobR='<path d="M'+(cx+RX-4)+','+(CY+6)+' q22,-4 22,-22 q0,-12 -12,-10 q-10,2 -10,16 z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>';
+        return lobL+lobR+main+spn;}});}
+
+  else if(t==='coracao'){const CY=178;   /* corpo em coração */
+    Object.assign(R,{rx:52,ry:46,cy:CY,headTop:142,faceCy:172,headW:0.85,headHalf:44,
+      wingY:160,legY:CY+44,legXs:[136,164],armY:178,armLx:cx-50,armRx:cx+50,tailX:cx+46,tailY:CY+34,
+      drawBody:(bc,bd)=>'<path d="M'+cx+','+(CY+48)+' C'+(cx-12)+','+(CY+30)+' '+(cx-58)+','+(CY+6)+' '+(cx-58)+','+(CY-22)+' C'+(cx-58)+','+(CY-52)+' '+(cx-18)+','+(CY-54)+' '+cx+','+(CY-24)+' C'+(cx+18)+','+(CY-54)+' '+(cx+58)+','+(CY-52)+' '+(cx+58)+','+(CY-22)+' C'+(cx+58)+','+(CY+6)+' '+(cx+12)+','+(CY+30)+' '+cx+','+(CY+48)+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>'});}
+
+  else if(t==='gota'){const CY=196,R0=46,TP=118;   /* gotinha: ponta em cima, base redonda (água) */
+    Object.assign(R,{rx:R0,ry:48,cy:CY,headTop:160,faceCy:CY,headW:0.95,headHalf:R0,
+      wingY:180,legY:CY+R0-2,legXs:[136,164],armY:CY,armLx:cx-R0,armRx:cx+R0,tailX:cx+R0,tailY:CY+R0,
+      drawBody:(bc,bd)=>'<path d="M'+cx+','+TP+' C'+(cx-24)+',150 '+(cx-R0)+','+(CY-22)+' '+(cx-R0)+','+CY+' A'+R0+','+R0+' 0 1 0 '+(cx+R0)+','+CY+' C'+(cx+R0)+','+(CY-22)+' '+(cx+24)+',150 '+cx+','+TP+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>'});}
+
+  else if(t==='pinguim'){const CY=184,RX=46,RY=58;   /* pinguim: corpo + barriga clara + nadadeiras */
+    Object.assign(R,{rx:RX,ry:RY,cy:CY,headTop:CY-RY+6,faceCy:CY-RY*0.34,headW:0.85,headHalf:40,
+      wingY:CY-18,legY:CY+RY-2,legXs:[138,162],arms:false,armY:CY,armLx:cx-RX,armRx:cx+RX,tailX:cx+RX,tailY:CY+RY,
+      drawBody:(bc,bd)=>{const lp='<ellipse cx="'+(cx-RX+2)+'" cy="'+(CY+6)+'" rx="11" ry="30" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" transform="rotate(18 '+(cx-RX+2)+' '+(CY+6)+')"/>';
+        const rp='<ellipse cx="'+(cx+RX-2)+'" cy="'+(CY+6)+'" rx="11" ry="30" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" transform="rotate(-18 '+(cx+RX-2)+' '+(CY+6)+')"/>';
+        return lp+rp+ell(cx,CY,RX,RY,bc,bd)+'<ellipse cx="'+cx+'" cy="'+(CY+10)+'" rx="'+(RX*0.6)+'" ry="'+(RY*0.66)+'" fill="#ffffff" opacity="0.5"/>';}});}
+
+  else if(t==='boneco'){const B=222,BR=40,M=178,MR=32,H=140,HR=26;   /* boneco de neve: 3 bolas */
+    Object.assign(R,{rx:BR,ry:BR,cy:B,headCx:cx,headTop:H-HR+4,faceCy:H,headW:0.7,headHalf:HR,
+      wingY:M,legY:B+BR-4,legXs:[136,164],armY:M,armLx:cx-MR,armRx:cx+MR,tailX:cx+BR,tailY:B+BR,
+      drawBody:(bc,bd)=>ell(cx,B,BR,BR,bc,bd)+ell(cx,M,MR,MR,bc,bd)+ell(cx,H,HR,HR,bc,bd)});}
+
+  else if(t==='dino'){const CY=184,RX=48,RY=54;   /* dino: corpo + placas nas costas */
+    Object.assign(R,{rx:RX,ry:RY,cy:CY,headTop:CY-RY+6,faceCy:CY-RY*0.30,headW:0.95,headHalf:44,
+      wingY:CY-18,legY:CY+RY-2,legXs:[132,168],armY:CY-2,armLx:cx-RX,armRx:cx+RX,tailX:cx+RX,tailY:CY+RY,
+      drawBody:(bc,bd)=>{let sp='';const c=darken(bc,0.16);[[-16,-RY+6],[2,-RY-2],[20,-RY+4],[36,-RY+16]].forEach(([dx,dy])=>{sp+='<path d="M'+(cx+dx-7)+','+(CY+dy+12)+' L'+(cx+dx)+','+(CY+dy)+' L'+(cx+dx+7)+','+(CY+dy+12)+' Z" fill="'+c+'" stroke="'+bd+'" stroke-width="1.5" stroke-linejoin="round"/>';});return sp+ell(cx,CY,RX,RY,bc,bd);}});}
+
+  else if(t==='lua'){const CY=180;   /* lua crescente — rosto na parte grossa (esquerda) */
+    Object.assign(R,{rx:40,ry:58,cy:CY,headCx:132,headTop:146,faceCy:180,headW:0.62,headHalf:30,
+      wingY:158,legY:CY+58,legXs:[],arms:false,armY:CY,armLx:cx-40,armRx:cx+40,tailX:cx+30,tailY:CY+30,
+      drawBody:(bc,bd)=>'<path d="M150,120 A60,60 0 1 0 150,240 A46,46 0 1 1 150,120 Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>'});}
+
+  return R;
+}
+
+/* bico / focinho — parte do genoma (G.snout). Ancorado abaixo dos olhos. */
+function snoutSVG(R,type,bc,bd){
+  if(!type||type==='nenhum')return '';
+  const HC=R.headCx, fy=R.faceCy+12;
+  if(type==='bico')      return '<path d="M'+(HC-8)+','+(fy-1)+' L'+(HC+8)+','+(fy-1)+' L'+HC+','+(fy+11)+' Z" fill="#E8A33A" stroke="#b8801e" stroke-width="1.5" stroke-linejoin="round"/>';
+  if(type==='bico_longo')return '<path d="M'+(HC-7)+','+(fy-1)+' L'+(HC+7)+','+(fy-1)+' L'+HC+','+(fy+21)+' Z" fill="#E8A33A" stroke="#b8801e" stroke-width="1.5" stroke-linejoin="round"/>';
+  if(type==='focinho')   return '<ellipse cx="'+HC+'" cy="'+(fy+5)+'" rx="15" ry="11" fill="#ffffff" opacity="0.42"/><ellipse cx="'+HC+'" cy="'+(fy+1)+'" rx="5" ry="3.5" fill="'+darken(bc,0.34)+'"/><path d="M'+HC+','+(fy+4)+' v5 M'+(HC-6)+','+(fy+11)+' q6,4 12,0" fill="none" stroke="'+darken(bc,0.34)+'" stroke-width="1.6" stroke-linecap="round"/>';
+  return '';
+}
+
+/* ============ IDENTIDADE (semente determinística · padrão · marcas · forma) ============
+   Tudo aqui é DERIVADO do genoma de forma determinística: mesma seed + genes =
+   mesmo pet. É isso que deixa portar pro servidor e reproduzir na mescla.
+     rng(seed)      -> PRNG estável (mulberry32). Mesma seed = mesmas posições.
+     coatSVG()      -> pelagem procedural (sardas/pintas/listras/manchas)
+     markSVG()      -> marca individual (cicatriz, racha, 3º olho...) c/ proveniência
+     emergentForm() -> forma CONQUISTADA (Infernal/Seráfico/Espectral) computada dos genes+alinhamento
+     epithet()      -> título derivado da jornada (não é escolhido, é ganho) */
+function rng(seed){let t=(seed>>>0)||1;return function(){t+=0x6D2B79F5;let r=Math.imul(t^t>>>15,1|t);r^=r+Math.imul(r^r>>>7,61|r);return((r^r>>>14)>>>0)/4294967296;};}
+
+const PATTERNS=['none','sardas','pintas','listras','manchas'];
+const PATTERN_L={none:'Liso',sardas:'Sardas',pintas:'Pintas',listras:'Listras',manchas:'Manchas'};
+const MARK_TYPES=[
+  {id:'cicatriz',l:'Cicatriz'},{id:'racha',l:'Racha'},{id:'remendo',l:'Remendo'},
+  {id:'terceiro_olho',l:'3º olho'},{id:'sinal_coracao',l:'Sinal ♥'},{id:'sinal_estrela',l:'Sinal ✦'}
+];
+
+/* pelagem procedural — gerada pela seed, recortada na silhueta do corpo (pelo caller) */
+function coatSVG(R,rnd,type,bc,bl){
+  if(!type||type==='none')return '';
+  const cx=R.cx,cy=R.cy,rx=R.rx,ry=R.ry;let g='';
+  if(type==='sardas'){const c=darken(bc,0.16);for(let i=0;i<12;i++){const x=R.headCx+(rnd()*2-1)*R.headHalf*0.8,y=R.faceCy+9+rnd()*16;g+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(1.3+rnd()*1.2).toFixed(1)+'" fill="'+c+'" opacity="0.55"/>';}}
+  else if(type==='pintas'){const c=darken(bc,0.14);for(let i=0;i<14;i++){const x=cx+(rnd()*2-1)*rx,y=cy+(rnd()*2-1)*ry,r=2+rnd()*4;g+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+r.toFixed(1)+'" fill="'+c+'" opacity="0.5"/>';}}
+  else if(type==='manchas'){for(let i=0;i<5;i++){const x=cx+(rnd()*2-1)*rx*0.85,y=cy+(rnd()*2-1)*ry*0.85,r=10+rnd()*16;g+='<ellipse cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" rx="'+r.toFixed(1)+'" ry="'+(r*(0.7+rnd()*0.5)).toFixed(1)+'" fill="'+bl+'" opacity="0.5"/>';}}
+  else if(type==='listras'){const c=darken(bc,0.13);for(let i=0;i<5;i++){const yy=cy-ry+(i+1)*(2*ry/6);g+='<path d="M'+(cx-rx)+','+yy.toFixed(1)+' q'+rx+','+(8-rnd()*16).toFixed(1)+' '+(2*rx)+',0" stroke="'+c+'" stroke-width="'+(4+rnd()*4).toFixed(1)+'" fill="none" opacity="0.5" stroke-linecap="round"/>';}}
+  return g;
+}
+
+/* uma marca individual (cicatriz/sinal...) — posição ancorada no rosto/corpo */
+function markSVG(R,m,bc,acc){
+  const cx=R.cx,cy=R.cy,rx=R.rx,ry=R.ry,HC=R.headCx,FY=R.faceCy,HH=R.headHalf;
+  if(m.type==='cicatriz'){const x=HC-HH*0.5,y=FY-2;return '<g stroke="'+darken(bc,0.32)+'" stroke-width="2" stroke-linecap="round"><line x1="'+x+'" y1="'+(y-12)+'" x2="'+(x+5)+'" y2="'+(y+12)+'"/>'+[-7,1,9].map(o=>'<line x1="'+(x-4)+'" y1="'+(y+o)+'" x2="'+(x+8)+'" y2="'+(y+o-2)+'"/>').join('')+'</g>';}
+  if(m.type==='racha'){const x=HC+HH*0.42;return '<path d="M'+x+','+(FY-14)+' l5,8 l-5,3 l7,9" fill="none" stroke="'+(m.color?EYE[m.color]||m.color:acc)+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';}
+  if(m.type==='remendo'){const x=cx-rx*0.42,y=cy+ry*0.18;return '<g><rect x="'+(x-9)+'" y="'+(y-9)+'" width="18" height="18" rx="3" fill="'+darken(bc,0.1)+'" stroke="'+darken(bc,0.3)+'" stroke-width="1.5"/><line x1="'+(x-9)+'" y1="'+y+'" x2="'+(x+9)+'" y2="'+y+'" stroke="'+darken(bc,0.3)+'" stroke-width="1" stroke-dasharray="2 2"/><line x1="'+x+'" y1="'+(y-9)+'" x2="'+x+'" y2="'+(y+9)+'" stroke="'+darken(bc,0.3)+'" stroke-width="1" stroke-dasharray="2 2"/></g>';}
+  if(m.type==='terceiro_olho') return drawEye(HC,FY-18,8,EYE[m.color||'fogo'],'redondo',EYE[m.color||'fogo']);
+  if(m.type==='sinal_coracao'){const x=HC+HH*0.6,y=FY+8;return '<path d="M'+x+','+(y+2)+' c-3,-4 -8,-1 -8,2 c0,3 5,6 8,9 c3,-3 8,-6 8,-9 c0,-3 -5,-6 -8,-2 z" fill="'+acc+'" opacity="0.85"/>';}
+  if(m.type==='sinal_estrela'){const x=HC-HH*0.6,y=FY+6;return star(x,y,6,acc);}
+  return '';
+}
+
+/* FORMA EMERGENTE — não se escolhe, se conquista. Computada dos genes + alinhamento. */
+function emergentForm(G){
+  const a=G.alignment;
+  const horn=['chifres','chifrinho'].includes(G.ears.type), darkW=['demonio','dragao','morcego','fenix'].includes(G.wings.type), darkA=['fogo','sombra','vortex','veneno'].includes(G.aura.type);
+  const holyW=['anjo','penas','fada'].includes(G.wings.type), holyA=['sagrada','luz','aurora'].includes(G.aura.type), uni=G.ears.type==='unicornio';
+  if(a<=-66 && (horn||darkW||darkA)) return {id:'infernal',l:'Infernal',glow:'#FF5A2A'};
+  if(a>= 66 && (holyW||holyA||uni)) return {id:'serafico',l:'Seráfico',glow:'#FFE6A0'};
+  if(['fantasma','estrela'].includes(G.body.type)) return {id:'espectral',l:'Espectral',glow:'#9FE0FF'};
+  return null;
+}
+
+/* EPÍTETO — título derivado da jornada (forma > alinhamento) */
+function epithet(G,form){
+  if(form){if(form.id==='infernal')return G.alignment<=-85?'Senhor das Trevas':'Forjado nas Trevas';
+    if(form.id==='serafico')return G.alignment>=85?'Arauto da Luz':'Tocado pela Luz';
+    if(form.id==='espectral')return 'Sem Forma';}
+  const b=band(G.alignment);return b==='mau'?'das Sombras':b==='bem'?'da Aurora':'Errante';
+}
+
+/* ============ RENDERIZADOR (genoma -> SVG por camadas) ============ */
+function buildPet(){
+  const C=PAL[G.body.color],bc=C.m,bl=C.l,acc=ACC[G.accent.color],ey=EYE[G.eyes.color];
+  const R=rig(G), cx=R.cx,rx=R.rx,ry=R.ry,cy=R.cy;
+  const hx=(n)=>R.headCx+(n-150)*R.headW;            /* remapeia X de cabeça/rosto p/ o arquétipo */
+  const mood=band(G.alignment), form=emergentForm(G), rnd=rng(G.seed);
+  /* ALINHAMENTO COMO PELE: trevas escurece o contorno; brilho nos olhos em extremos/fogo/forma */
+  let bd=C.d; if(mood==='mau') bd=darken(bd,0.18*intensity());
+  const eGlow=(G.eyes.color==='fogo'||G.eyes.color==='ouro'||!!form||Math.abs(G.alignment)>=66);
+  const wS=wingScale(), hS=hornScale(), tS=tailScale();
+  let s='<svg viewBox="0 0 300 340" style="width:100%;height:100%">';
+
+  /* ASAS (atrás, escalam com alinhamento) — count: 0 nenhuma · 1 um lado · 2 par */
+  const wy=R.wingY, wc=(G.wings.count==null?2:G.wings.count);
+  if(wc>=1) s+=wingG(cx+rx-12,wy,true ,G.wings.type,G.wings.color,wS);
+  if(wc>=2) s+=wingG(cx-rx+12,wy,false,G.wings.type,G.wings.color,wS);
+
+  /* CAUDA (atrás, escala com alinhamento) — base TBX/TBY vem do rig */
+  const TBX=R.tailX, TBY=R.tailY, tpx=TBX-8, tpy=TBY-20;
+  let tail='';
+  if(G.tail.type==='poof') tail='<circle cx="'+(TBX-6)+'" cy="'+(TBY-18)+'" r="17" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/>';
+  else if(G.tail.type==='curl') tail='<path d="M'+tpx+','+tpy+' q26,6 22,-16 q-3,-16 -16,-10" fill="none" stroke="'+bc+'" stroke-width="9" stroke-linecap="round"/>';
+  else if(G.tail.type==='tufo') tail='<path d="M'+(TBX-10)+','+(TBY-22)+' q22,-2 30,-20 q-2,16 -16,24 q-8,4 -14,-4 z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/>';
+  else if(G.tail.type==='gatinho') tail='<path d="M'+(TBX-8)+','+(TBY-14)+' q40,6 38,-32 q-2,-24 -20,-16" fill="none" stroke="'+bc+'" stroke-width="8" stroke-linecap="round"/>';
+  else if(G.tail.type==='chamas') tail='<path d="M'+(TBX-6)+','+(TBY-14)+' q20,-4 20,-28 q10,12 5,24 q11,-6 11,-22 q9,16 -3,30 q-11,13 -33,4 z" fill="'+acc+'" stroke="'+darken(acc,0.22)+'" stroke-width="1.5" stroke-linejoin="round"/>';
+  else if(G.tail.type==='espinho') tail='<path d="M'+(TBX-8)+','+(TBY-18)+' l14,-4 l-6,-8 l14,-2 l-6,-9 l13,-3 l-8,-8" fill="none" stroke="'+bc+'" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>';
+  else if(G.tail.type==='pena') tail='<path d="M'+(TBX-8)+','+(TBY-14)+' q18,-12 40,-32 q-4,22 -34,30 z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/><path d="M'+(TBX-4)+','+(TBY-18)+' q14,-10 30,-26" fill="none" stroke="'+bd+'" stroke-width="1.5" opacity="0.6"/>';
+  else if(G.tail.type==='peixe') tail='<path d="M'+(TBX-10)+','+(TBY-20)+' q22,-4 34,-22 q-1,14 -10,18 q11,3 13,17 q-20,-7 -37,-5 z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>';
+  else if(G.tail.type==='raio') tail='<path d="M'+(TBX-8)+','+(TBY-18)+' l16,-4 l-9,-7 l17,-6 l-9,-7 l15,-9" fill="none" stroke="'+acc+'" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>';
+  else if(G.tail.type==='diabo') tail='<path d="M'+(TBX-8)+','+(TBY-18)+' q30,0 30,-26" fill="none" stroke="'+bc+'" stroke-width="6" stroke-linecap="round"/><path d="M'+(TBX+22)+','+(TBY-50)+' l8,-2 l-4,10 l8,0 l-10,10 z" fill="'+bc+'" stroke="'+bd+'" stroke-width="1.5" stroke-linejoin="round"/>';
+  else if(G.tail.type==='estrela') tail='<path d="M'+(TBX-8)+','+(TBY-18)+' q26,4 24,-18" fill="none" stroke="'+bc+'" stroke-width="7" stroke-linecap="round"/>'+star(TBX+16,TBY-40,8,acc);
+  if(tail) s+=scaleAbout(tail,tpx,tpy,tS);
+
+  /* ORELHAS / CHIFRES (atrás da cabeça; chifres escalam com alinhamento) */
+  const eTop=R.headTop;
+  if(G.ears.type==='round') s+='<circle cx="'+hx(118)+'" cy="'+(eTop-2)+'" r="17" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/><circle cx="'+hx(182)+'" cy="'+(eTop-2)+'" r="17" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/><circle cx="'+hx(118)+'" cy="'+(eTop-1)+'" r="8" fill="'+acc+'" opacity="0.5"/><circle cx="'+hx(182)+'" cy="'+(eTop-1)+'" r="8" fill="'+acc+'" opacity="0.5"/>';
+  else if(G.ears.type==='gato') s+='<path d="M'+hx(104)+','+(eTop+8)+' L'+hx(112)+','+(eTop-26)+' L'+hx(134)+','+(eTop+2)+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/><path d="M'+hx(196)+','+(eTop+8)+' L'+hx(188)+','+(eTop-26)+' L'+hx(166)+','+(eTop+2)+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>';
+  else if(G.ears.type==='urso') s+='<circle cx="'+hx(124)+'" cy="'+(eTop-7)+'" r="12" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/><circle cx="'+hx(176)+'" cy="'+(eTop-7)+'" r="12" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/><circle cx="'+hx(124)+'" cy="'+(eTop-6)+'" r="5.5" fill="'+acc+'" opacity="0.5"/><circle cx="'+hx(176)+'" cy="'+(eTop-6)+'" r="5.5" fill="'+acc+'" opacity="0.5"/>';
+  else if(G.ears.type==='raposa') s+='<path d="M'+hx(112)+','+(eTop+8)+' L'+hx(98)+','+(eTop-46)+' L'+hx(138)+','+(eTop-2)+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/><path d="M'+hx(188)+','+(eTop+8)+' L'+hx(202)+','+(eTop-46)+' L'+hx(162)+','+(eTop-2)+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/><path d="M'+hx(108)+','+(eTop-12)+' L'+hx(101)+','+(eTop-40)+' L'+hx(120)+','+(eTop-14)+' Z" fill="'+darken(bc,0.28)+'"/><path d="M'+hx(192)+','+(eTop-12)+' L'+hx(199)+','+(eTop-40)+' L'+hx(180)+','+(eTop-14)+' Z" fill="'+darken(bc,0.28)+'"/>';
+  else if(G.ears.type==='caida') s+='<ellipse cx="'+hx(106)+'" cy="'+(eTop+22)+'" rx="13" ry="26" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/><ellipse cx="'+hx(194)+'" cy="'+(eTop+22)+'" rx="13" ry="26" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/>';
+  else if(G.ears.type==='pontuda') s+='<path d="M'+hx(108)+','+(eTop+6)+' L'+hx(96)+','+(eTop-34)+' L'+hx(130)+','+(eTop-2)+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/><path d="M'+hx(192)+','+(eTop+6)+' L'+hx(204)+','+(eTop-34)+' L'+hx(170)+','+(eTop-2)+' Z" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" stroke-linejoin="round"/>';
+  else if(G.ears.type==='coelho'){const lc=hx(130),rc=hx(170);s+='<ellipse cx="'+lc+'" cy="'+(eTop-16)+'" rx="10" ry="30" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" transform="rotate(-9 '+lc+' '+(eTop-16)+')"/><ellipse cx="'+rc+'" cy="'+(eTop-16)+'" rx="10" ry="30" fill="'+bc+'" stroke="'+bd+'" stroke-width="2" transform="rotate(9 '+rc+' '+(eTop-16)+')"/><ellipse cx="'+lc+'" cy="'+(eTop-16)+'" rx="4.5" ry="21" fill="'+acc+'" opacity="0.5" transform="rotate(-9 '+lc+' '+(eTop-16)+')"/><ellipse cx="'+rc+'" cy="'+(eTop-16)+'" rx="4.5" ry="21" fill="'+acc+'" opacity="0.5" transform="rotate(9 '+rc+' '+(eTop-16)+')"/>';}
+  else if(G.ears.type==='unicornio') s+=scaleAbout('<path d="M'+hx(150)+','+(eTop+2)+' L'+hx(143)+','+(eTop-36)+' L'+hx(157)+','+(eTop-36)+' Z" fill="'+acc+'" stroke="'+darken(acc,0.22)+'" stroke-width="1.5" stroke-linejoin="round"/><path d="M'+hx(146)+','+(eTop-10)+' l8,-1 M'+hx(147)+','+(eTop-19)+' l6,-1 M'+hx(148)+','+(eTop-28)+' l4,-1" stroke="'+darken(acc,0.28)+'" stroke-width="1.6" stroke-linecap="round"/>',R.headCx,eTop,hS);
+  else if(G.ears.type==='chifrinho') s+=scaleAbout('<path d="M'+hx(124)+','+(eTop+2)+' q-4,-20 6,-26" fill="none" stroke="'+bd+'" stroke-width="6" stroke-linecap="round"/><path d="M'+hx(176)+','+(eTop+2)+' q4,-20 -6,-26" fill="none" stroke="'+bd+'" stroke-width="6" stroke-linecap="round"/>',R.headCx,eTop,hS);
+  else if(G.ears.type==='chifres') s+=scaleAbout('<path d="M'+hx(122)+','+(eTop+4)+' q-16,-22 -2,-40 q6,16 16,22" fill="'+bd+'" stroke="'+darken(bd,0.2)+'" stroke-width="1.5" stroke-linejoin="round"/><path d="M'+hx(178)+','+(eTop+4)+' q16,-22 2,-40 q-6,16 -16,22" fill="'+bd+'" stroke="'+darken(bd,0.2)+'" stroke-width="1.5" stroke-linejoin="round"/>',R.headCx,eTop,hS);
+
+  /* PERNINHAS (estilo: pezinho / patinha / garrinha) — posições em R.legXs (2 ou 4; vazio = sem pés) */
+  const legY=R.legY, legStyle=(G.legs&&G.legs.present)?(G.legs.style||'oval'):'nenhuma';
+  const footAt=(fx)=>{
+    if(legStyle==='oval')     return '<ellipse cx="'+fx+'" cy="'+legY+'" rx="13" ry="9" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/>';
+    if(legStyle==='patinha')  return '<ellipse cx="'+fx+'" cy="'+legY+'" rx="13" ry="9" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/><ellipse cx="'+fx+'" cy="'+(legY+1)+'" rx="6" ry="4" fill="'+acc+'" opacity="0.5"/>';
+    if(legStyle==='garrinha') return '<ellipse cx="'+fx+'" cy="'+(legY-1)+'" rx="12" ry="8" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/>'+[-6,0,6].map(o=>'<path d="M'+(fx+o)+','+(legY+5)+' l-1.5,5 l3,0 z" fill="'+bd+'"/>').join('');
+    if(legStyle==='botinha') return '<rect x="'+(fx-6)+'" y="'+(legY-13)+'" width="12" height="11" rx="2.5" fill="'+darken(bc,0.22)+'" stroke="'+bd+'" stroke-width="1.5"/><rect x="'+(fx-12)+'" y="'+(legY-3)+'" width="24" height="9" rx="4.5" fill="'+darken(bc,0.22)+'" stroke="'+bd+'" stroke-width="1.5"/>';
+    return '';
+  };
+  if(legStyle!=='nenhuma') R.legXs.forEach(fx=>{s+=footAt(fx);});
+
+  /* BRAÇOS (patinha / garrinha / tentáculo) — alguns arquétipos não têm (R.arms=false) */
+  if(R.arms&&G.arms.present){const ay=R.armY,lx=R.armLx,rxp=R.armRx;
+    if(G.arms.style==='tentaculo'){
+      s+='<path d="M'+(lx+8)+','+ay+' q-20,8 -12,26 q5,10 -4,15" fill="none" stroke="'+bc+'" stroke-width="9" stroke-linecap="round"/><path d="M'+(rxp-8)+','+ay+' q20,8 12,26 q-5,10 4,15" fill="none" stroke="'+bc+'" stroke-width="9" stroke-linecap="round"/>';
+    } else {
+      s+='<line x1="'+(lx+8)+'" y1="'+ay+'" x2="'+(lx-6)+'" y2="'+(ay+20)+'" stroke="'+bc+'" stroke-width="11" stroke-linecap="round"/><line x1="'+(rxp-8)+'" y1="'+ay+'" x2="'+(rxp+6)+'" y2="'+(ay+20)+'" stroke="'+bc+'" stroke-width="11" stroke-linecap="round"/>';
+      if(G.arms.style==='patinha') s+='<circle cx="'+(lx-6)+'" cy="'+(ay+20)+'" r="7" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/><circle cx="'+(rxp+6)+'" cy="'+(ay+20)+'" r="7" fill="'+bc+'" stroke="'+bd+'" stroke-width="2"/>';
+      else{const claw=(hx,dir)=>{let c='';for(let k=-1;k<2;k++){const px=hx+dir*3+k*4;c+='<path d="M'+px+','+(ay+20)+' l'+(dir*1.5)+',9 l-3,0 z" fill="'+bd+'"/>';}return c;};s+=claw(lx-6,-1)+claw(rxp+6,1);}
+    }
+  }
+
+  /* CORPO (carne) — silhueta vem do arquétipo (rig.drawBody) */
+  s+=R.drawBody(bc,bd);
+
+  /* MARCA (barriga = tom claro da mesma cor; pintas idem) */
+  if(G.accent.mark==='barriga') s+='<ellipse cx="'+cx+'" cy="'+(cy+14)+'" rx="'+(rx*0.52)+'" ry="'+(ry*0.5)+'" fill="'+bl+'"/>';
+  else if(G.accent.mark==='pintas') s+='<circle cx="'+(cx-22)+'" cy="'+(cy+18)+'" r="6" fill="'+bl+'"/><circle cx="'+(cx+18)+'" cy="'+(cy+26)+'" r="5" fill="'+bl+'"/><circle cx="'+cx+'" cy="'+(cy+6)+'" r="4" fill="'+bl+'"/>';
+
+  /* PELAGEM PROCEDURAL (semente) — recortada na silhueta do corpo */
+  if(G.pattern&&G.pattern.type&&G.pattern.type!=='none'){
+    const clip='bclip'+(G.seed>>>0);
+    s+='<clipPath id="'+clip+'">'+R.drawBody('#000','#000')+'</clipPath>';
+    s+='<g clip-path="url(#'+clip+')">'+coatSVG(R,rnd,G.pattern.type,bc,bl)+'</g>';
+  }
+
+  /* ROSTO (olhos grandes = fofura; bochechas e expressão pelo alinhamento) */
+  const es=12,eY=R.faceCy,HC=R.headCx,HW=R.headW;
+  let xs=G.eyes.count===1?[HC]:G.eyes.count===2?[HC-(es+7)*HW,HC+(es+7)*HW]:[HC-(es*2+6)*HW,HC,HC+(es*2+6)*HW];
+  if(G.accent.cheeks) s+='<ellipse cx="'+(HC-R.headHalf*0.62)+'" cy="'+(eY+es+4)+'" rx="9" ry="6" fill="'+acc+'" opacity="0.55"/><ellipse cx="'+(HC+R.headHalf*0.62)+'" cy="'+(eY+es+4)+'" rx="9" ry="6" fill="'+acc+'" opacity="0.55"/>';
+  const ey2=EYE[G.eyes.color2]||ey, estyle=G.eyes.style||'redondo';
+  xs.forEach((x,i)=>{const ec=(G.eyes.hetero&&i%2===1)?ey2:ey;s+=drawEye(x,eY,es,ec,estyle,eGlow?ec:null);});
+  if(mood==='mau') xs.forEach(x=>{s+='<line x1="'+(x-es*0.7)+'" y1="'+(eY-es-3)+'" x2="'+(x+es*0.4)+'" y2="'+(eY-es+1)+'" stroke="'+bd+'" stroke-width="2.5" stroke-linecap="round"/>';});
+  /* FOCINHO / BICO (genoma) — passaro/dino implicam um por padrão; o focinho substitui a boca */
+  let snout=G.snout||'nenhum';
+  if(snout==='nenhum'&&R.type==='passaro')snout='bico';
+  if(snout==='nenhum'&&R.type==='dino')snout='focinho';
+  const my=eY+es+7;
+  if(snout==='nenhum'){
+    if(mood==='bem') s+='<path d="M'+(HC-8)+','+my+' Q'+HC+','+(my+8)+' '+(HC+8)+','+my+'" fill="none" stroke="'+bd+'" stroke-width="2.5" stroke-linecap="round"/>';
+    else if(mood==='mau') s+='<path d="M'+(HC-8)+','+(my+3)+' Q'+HC+','+(my-3)+' '+(HC+8)+','+(my+3)+'" fill="none" stroke="'+bd+'" stroke-width="2.5" stroke-linecap="round"/><path d="M'+(HC+4)+','+(my+2)+' l3,5 l-5,0 z" fill="#fff"/>';
+    else s+='<line x1="'+(HC-6)+'" y1="'+my+'" x2="'+(HC+6)+'" y2="'+my+'" stroke="'+bd+'" stroke-width="2.5" stroke-linecap="round"/>';
+  } else s+=snoutSVG(R,snout,bc,bd);
+
+  if(G.extra.antena) s+='<line x1="'+HC+'" y1="'+(R.headTop-6)+'" x2="'+HC+'" y2="'+(R.headTop-26)+'" stroke="'+bc+'" stroke-width="3.5" stroke-linecap="round"/><circle cx="'+HC+'" cy="'+(R.headTop-28)+'" r="6" fill="'+acc+'"/>';
+
+  /* MARCAS / CICATRIZES (por cima de tudo; cada uma é parte da história do pet) */
+  if(G.marks&&G.marks.length) G.marks.forEach(m=>{s+=markSVG(R,m,bc,acc);});
+
+  s+='</svg>';return s;
+}
+
+/* ============ AURA — MOTOR DE PARTÍCULAS (tsParticles) ============
+   O genoma aura é só DADO. auraOptions() traduz esse dado pro formato
+   do tsParticles; paintAura() carrega no canvas. Para uma IA aprimorar
+   um pet, basta editar os campos de G.aura — nenhuma lógica escondida. */
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function hexA(hex,al){const n=parseInt(hex.slice(1),16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+al+')';}
+function intenMult(){return {baixa:0.6,media:1,alta:1.5,maxima:2.2}[G.aura.inten]||1;}
+
+/* formas próprias desenhadas no canvas (coração e pétala) — garantem que
+   'heart'/'petal' sempre renderizem, sem depender das shapes do bundle */
+function registerShapes(){
+  if(typeof tsParticles==='undefined'||tsParticles.__petShapes)return;
+  tsParticles.addShape('heart',(c,p,r)=>{const s=r/14;
+    c.moveTo(0,11*s);
+    c.bezierCurveTo(-2*s,8*s,-14*s,0,-14*s,-6*s);
+    c.bezierCurveTo(-14*s,-13*s,-6*s,-14*s,0,-7*s);
+    c.bezierCurveTo(6*s,-14*s,14*s,-13*s,14*s,-6*s);
+    c.bezierCurveTo(14*s,0,2*s,8*s,0,11*s);});
+  tsParticles.addShape('petal',(c,p,r)=>{
+    c.moveTo(0,-r);
+    c.quadraticCurveTo(r*0.95,0,0,r);
+    c.quadraticCurveTo(-r*0.95,0,0,-r);});
+  tsParticles.__petShapes=true;
+}
+
+/* copia o preset do tipo pros knobs do genoma (mantém o JSON completo) */
+function applyAuraPreset(type){
+  const inten=RAR_TO_INTEN[rarOf('aura',type)]||'media';
+  G.aura=Object.assign(
+    {type,color:'#F4D06A',inten,density:18,speed:1,size:5,glow:0.4,opacity:0.7,
+     blend:'screen',shape:'circle',direction:'up',spin:false,twinkle:false,hueShift:false,halo:false},
+    AURA_PRESETS[type]||{},
+    {type,inten}
+  );
+}
+
+/* ACESSIBILIDADE: o usuário pediu animação SEMPRE leve e fluida — nada rápido nem
+   piscando (risco a pessoas fotossensíveis). Então aqui a gente:
+   - aplica um TETO global de velocidade (SPEED_CAP) por cima do que vier do genoma;
+   - usa animações lentas de "respiração" (não piscar): twinkle não apaga de vez;
+   - respeita prefers-reduced-motion: reduz tudo a quase parado, sem twinkle/giro/matiz. */
+const SPEED_CAP=1.1;                                   // velocidade máxima de deslocamento
+function reducedMotion(){try{return window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){return false;}}
+/* genoma aura -> config tsParticles */
+function auraOptions(){
+  const a=G.aura, RM=reducedMotion();
+  const dirMap={up:'top',down:'bottom',drift:'none',swirl:'none'};
+  const count=clamp(Math.round((a.density||0)*intenMult()),0,300);
+  const op=clamp(a.opacity||0.6,0.05,1), sz=clamp(a.size||4,1,30);
+  /* velocidade efetiva: limitada ao teto e bem reduzida em reduced-motion */
+  const spd=clamp((a.speed||0.4),0,SPEED_CAP)*(RM?0.25:1);
+  const twinkle=!!a.twinkle&&!RM, spin=!!a.spin&&!RM, hue=!!a.hueShift&&!RM;
+  const move={enable:true,direction:dirMap[a.direction]||'none',speed:Math.max(0.05,spd),
+    random:a.direction!=='up'&&a.direction!=='down',straight:false,outModes:{default:'out'}};
+  if(a.direction==='down')  move.gravity={enable:true,acceleration:Math.max(0.5,spd*2.2)}; // queda suave
+  if(a.direction==='swirl') move.spin={enable:true,acceleration:Math.max(0.6,spd*2.4)};    // giro lento
+  return {
+    fullScreen:{enable:false},detectRetina:true,fpsLimit:60,background:{color:'transparent'},
+    particles:{
+      number:{value:count,density:{enable:false}},
+      color: hue ? {value:'#ff5e7e',animation:{h:{enable:true,speed:5,sync:false}}} : {value:a.color},
+      shape:{type:a.shape||'circle',options:{polygon:{sides:6},star:{sides:5,inset:2}}},
+      /* opacidade "respira" devagar entre 55% e 100% do alvo — nunca apaga (sem flash) */
+      opacity:{value:{min:Math.max(0.06,op*0.55),max:op},
+        animation:twinkle?{enable:true,speed:0.5,sync:false,minimumValue:Math.max(0.06,op*0.55)}:{enable:false}},
+      size:{value:{min:Math.max(1,sz*0.45),max:sz}},
+      move,
+      shadow:{enable:(a.glow||0)>0.02,color:a.color,blur:(a.glow||0)*22},
+      rotate:{value:{min:0,max:360},direction:'random',animation:{enable:spin,speed:3,sync:false}}
+    }
+  };
+}
+
+let auraContainer=null;
+function paintHalo(){
+  const h=document.getElementById('auraHalo');
+  if(G.aura.halo){h.style.display='block';
+    h.style.background='radial-gradient(circle at 50% 56%, '+hexA(G.aura.color,0.85)+', transparent 60%)';}
+  else h.style.display='none';
+}
+async function paintAura(){
+  paintHalo();
+  const host=document.getElementById('auraParticles');
+  host.style.mixBlendMode=(!G.aura.blend||G.aura.blend==='normal')?'normal':G.aura.blend;
+  if(auraContainer){auraContainer.destroy();auraContainer=null;}
+  if(G.aura.type==='nenhuma'||typeof tsParticles==='undefined')return;
+  registerShapes();
+  try{auraContainer=await tsParticles.load({id:'auraParticles',options:auraOptions()});}
+  catch(e){console.warn('aura:',e);}
+}
+function writeJson(){document.getElementById('json').textContent=JSON.stringify(G,null,1);}
+function auraChanged(){renderControls();paintAura();writeJson();}
+
+/* ============ NOME / RÓTULOS ============ */
+const ADJ=['Bibo','Lumi','Pippo','Nuno','Mochi','Umbra','Tato','Zuzu','Velu','Ignis'];
+const SUF=['zinho','la','co','no','ki','pi','lo','ta','bo','mi'];
+function nameFrom(){let h=PK.indexOf(G.body.color)*9+G.eyes.count*5+G.wings.type.length*4+G.tail.type.length*3+Math.abs(G.alignment);return ADJ[h%ADJ.length]+SUF[(h*3)%SUF.length];}
+function alignName(){let n='Neutro';ALABEL.forEach(([t,l])=>{if(G.alignment>=t)n=l;});return n;}
+function rarestPart(){let best='comum';[['bodyType',G.body.type],['wings',G.wings.type],['ears',G.ears.type],['tail',G.tail.type],['aura',G.aura.type],['snout',G.snout]].forEach(([g,id])=>{const r=rarOf(g,id);if(RAR_ORD[r]>RAR_ORD[best])best=r;});return best;}
+
+/* ============ DESENHO + UI ============ */
+function draw(){
+  const holder=document.getElementById('holder');
+  holder.innerHTML=buildPet();
+  holder.style.opacity=dead?0.4:1;
+  holder.style.filter=dead?'grayscale(0.6)':'none';
+  paintAura();
+  const form=emergentForm(G);
+  document.getElementById('petName').textContent=nameFrom();
+  document.getElementById('epithet').textContent=(form?form.l+' · ':'')+epithet(G,form);
+  document.getElementById('stageLabel').textContent='✦ Fase: '+STAGES[stageIdx]+' · vida #'+Math.max(1,generation)+(dead?' ✝':'');
+  const ll=document.getElementById('lifeLog'); if(ll) ll.textContent=lastLog;
+  document.getElementById('alignLabel').textContent='✦ '+alignName();
+  document.getElementById('scaleInfo').textContent='Asa ×'+wingScale().toFixed(2)+' · Chifre ×'+hornScale().toFixed(2)+' · Cauda ×'+tailScale().toFixed(2);
+  const rl=document.getElementById('rarityLine');rl.innerHTML='';
+  if(form) rl.innerHTML+='<span class="badge" style="background:'+form.glow+'33;color:'+form.glow+'">✦ Forma '+form.l+'</span>';
+  [['Asa',rarOf('wings',G.wings.type)],['Aura',rarOf('aura',G.aura.type)],['Pico',rarestPart()]].forEach(([lab,r])=>{
+    rl.innerHTML+='<span class="badge" style="background:'+RAR_C[r]+'22;color:'+RAR_C[r]+'">'+lab+': '+RAR_L[r]+'</span>';});
+  document.getElementById('json').textContent=JSON.stringify(G,null,1);
+  document.getElementById('wingColor').value=G.wings.color;
+  document.getElementById('auraColor').value=G.aura.color;
+}
+
+function optBtns(host,group,curId,cb){const el=document.getElementById(host);el.innerHTML='';CAT[group].forEach(o=>{const b=document.createElement('button');b.className='seg'+(curId===o.id?' on':'');b.innerHTML=(o.r!=='comum'?'<span class="dot" style="background:'+RAR_C[o.r]+'"></span>':'')+o.l;b.title=RAR_L[o.r];b.onclick=()=>cb(o.id);el.appendChild(b);});}
+function sw(host,keys,getHex,cur,cb){const el=document.getElementById(host);el.innerHTML='';keys.forEach(k=>{const b=document.createElement('div');b.className='sw'+(cur===k?' on':'');b.style.background=getHex(k);b.title=k;b.onclick=()=>cb(k);el.appendChild(b);});}
+function sg(host,opts,cur,cb){const el=document.getElementById(host);el.innerHTML='';opts.forEach(o=>{const b=document.createElement('button');b.className='seg'+(String(cur)===String(o.v)?' on':'');b.textContent=o.l;b.onclick=()=>cb(o.v);el.appendChild(b);});}
+/* sliders da aura: editam G.aura ao vivo sem reconstruir o pet (suave no arraste) */
+function renderAuraSliders(){
+  const host=document.getElementById('auraSliders');host.innerHTML='';
+  AURA_SLIDERS.forEach(s=>{
+    const dec=s.step<1?2:0, val=(+(G.aura[s.k]??0));
+    const wrap=document.createElement('div');
+    wrap.innerHTML='<label>'+s.l+' <b style="color:var(--info)">'+val.toFixed(dec)+'</b></label>';
+    const r=document.createElement('input');r.type='range';r.min=s.min;r.max=s.max;r.step=s.step;r.value=val;
+    r.oninput=()=>{G.aura[s.k]=+r.value;wrap.querySelector('b').textContent=(+r.value).toFixed(dec);paintAura();writeJson();};
+    wrap.appendChild(r);host.appendChild(wrap);
+  });
+}
+
+function renderControls(){
+  document.getElementById('align').value=G.alignment;
+  optBtns('auraType','aura',G.aura.type,id=>{applyAuraPreset(id);draw();});
+  sg('auraShape',SHAPES.map(s=>({l:SHAPE_L[s],v:s})),G.aura.shape,v=>{G.aura.shape=v;auraChanged();});
+  sg('auraDir',DIRS.map(d=>({l:DIR_L[d],v:d})),G.aura.direction,v=>{G.aura.direction=v;auraChanged();});
+  sg('auraBlend',BLENDS.map(b=>({l:b,v:b})),G.aura.blend,v=>{G.aura.blend=v;auraChanged();});
+  sg('auraInten',[{l:'Baixa',v:'baixa'},{l:'Média',v:'media'},{l:'Alta',v:'alta'},{l:'Máxima',v:'maxima'}],G.aura.inten,v=>{G.aura.inten=v;auraChanged();});
+  renderAuraSliders();
+  sg('auraToggles',[{l:(G.aura.spin?'✓ ':'')+'Girar',v:'spin'},{l:(G.aura.twinkle?'✓ ':'')+'Cintilar',v:'twinkle'},{l:(G.aura.hueShift?'✓ ':'')+'Arco-íris',v:'hueShift'},{l:(G.aura.halo?'✓ ':'')+'Halo',v:'halo'}],'_',v=>{G.aura[v]=!G.aura[v];auraChanged();});
+  optBtns('wingType','wings',G.wings.type,id=>{G.wings.type=id;G.wings.count=id==='nenhuma'?0:((G.wings.count||0)<1?2:G.wings.count);renderControls();draw();});
+  sg('wingCount',[{l:'0',v:0},{l:'1',v:1},{l:'2',v:2}],(G.wings.count==null?2:G.wings.count),v=>{G.wings.count=v;if(v>0&&G.wings.type==='nenhuma')G.wings.type='neutra';renderControls();draw();});
+  optBtns('bodyType','bodyType',G.body.type,id=>{G.body.type=id;renderControls();draw();});
+  sw('bodyColor',PK,k=>PAL[k].m,G.body.color,k=>{G.body.color=k;renderControls();draw();});
+  optBtns('bodyShape','body',G.body.shape,id=>{G.body.shape=id;renderControls();draw();});
+  optBtns('ears','ears',G.ears.type,id=>{G.ears.type=id;renderControls();draw();});
+  optBtns('arms','arms',G.arms.present?G.arms.style:'nenhum',id=>{G.arms.present=id!=='nenhum';if(id!=='nenhum')G.arms.style=id;renderControls();draw();});
+  optBtns('tail','tail',G.tail.type,id=>{G.tail.type=id;renderControls();draw();});
+  optBtns('legs','legs',G.legs.present?(G.legs.style||'oval'):'nenhuma',id=>{G.legs.present=id!=='nenhuma';if(id!=='nenhuma')G.legs.style=id;renderControls();draw();});
+  sg('eyeCount',[{l:'1',v:1},{l:'2',v:2},{l:'3',v:3}],G.eyes.count,v=>{G.eyes.count=v;renderControls();draw();});
+  sg('eyeStyle',EYE_STYLES.map(s=>({l:EYE_STYLE_L[s],v:s})),G.eyes.style,v=>{G.eyes.style=v;renderControls();draw();});
+  sw('eyeColor',EK,k=>EYE[k],G.eyes.color,k=>{G.eyes.color=k;renderControls();draw();});
+  sw('eyeColor2',EK,k=>EYE[k],G.eyes.color2,k=>{G.eyes.color2=k;G.eyes.hetero=true;renderControls();draw();});
+  sg('eyeToggles',[{l:(G.eyes.hetero?'✓ ':'')+'Heterocromia',v:'h'}],'_',()=>{G.eyes.hetero=!G.eyes.hetero;renderControls();draw();});
+  optBtns('snoutRow','snout',G.snout,id=>{G.snout=id;renderControls();draw();});
+  sw('accColor',AK,k=>ACC[k],G.accent.color,k=>{G.accent.color=k;renderControls();draw();});
+  sg('toggles',[{l:G.accent.cheeks?'✓ Bochechas':'Bochechas',v:'c'},{l:G.accent.mark==='barriga'?'✓ Barriga':'Barriga',v:'b'},{l:G.accent.mark==='pintas'?'✓ Pintas':'Pintas',v:'p'},{l:G.extra.antena?'✓ Antena':'Antena',v:'t'}],'_',v=>{if(v==='c')G.accent.cheeks=!G.accent.cheeks;if(v==='b')G.accent.mark=G.accent.mark==='barriga'?'nenhuma':'barriga';if(v==='p')G.accent.mark=G.accent.mark==='pintas'?'nenhuma':'pintas';if(v==='t')G.extra.antena=!G.extra.antena;renderControls();draw();});
+  document.getElementById('seedVal').textContent=G.seed;
+  sg('patternRow',PATTERNS.map(p=>({l:PATTERN_L[p],v:p})),G.pattern.type,v=>{G.pattern.type=v;renderControls();draw();});
+  const hasMark=(t)=>G.marks.some(m=>m.type===t);
+  sg('marksRow',MARK_TYPES.map(mt=>({l:(hasMark(mt.id)?'✓ ':'')+mt.l,v:mt.id})),'_',v=>{if(hasMark(v))G.marks=G.marks.filter(m=>m.type!==v);else G.marks.push({type:v});renderControls();draw();});
+  const lg=document.getElementById('rarLegend');lg.innerHTML='';['comum','incomum','raro','lendario'].forEach(r=>{lg.innerHTML+='<span class="seg" style="cursor:default"><span class="dot" style="background:'+RAR_C[r]+'"></span>'+RAR_L[r]+'</span>';});
+}
+
+/* ============ AÇÕES ============ */
+function rollColorByBand(){const b=band(G.alignment);const pool=PK.filter(k=>PAL[k].aff===b||PAL[k].aff==='any');return pool[Math.floor(Math.random()*pool.length)];}
+function onAlign(v){G.alignment=v;renderControls();draw();}
+function newSeed(){G.seed=Math.floor(Math.random()*1e9);renderControls();draw();}
+
+/* ============ CICLO DE VIDA — MOTOR DE TRANSFORMAÇÃO (protótipo p/ portar ao servidor) ============
+   Nasce com corpo + olhos (1 ou 2) aleatórios. Cada RESPOSTA do usuário a IA classifica
+   como bem/mal -> mexe no ALINHAMENTO -> que enviesa o que cresce (rollGroup/affMult).
+   Por fase entram NO MÁXIMO 2 coisas e NADA REGRIDE: olhos só sobem (1->2->3), asa vai de
+   0 (nenhuma) -> 1 (um lado) -> 2 (par) -> evolui de tier; orelha/cauda/focinho/aura só
+   sobem de raridade; braço/perna/antena, uma vez presentes, ficam. Morte = reset; Renascimento.
+   ESTÁGIOS: Nascimento(0) Origem(1) Crescimento(2) Adulta(3) Velha(4) Morte(5) -> Renascimento */
+const STAGES=['Nascimento','Origem','Crescimento','Adulta','Velha','Morte'];
+let stageIdx=0, generation=0, dead=false, lastLog='';
+const rndi=(n)=>Math.floor(Math.random()*n);
+const NONE={ears:'nenhuma',tail:'nenhum',snout:'nenhum',wings:'nenhuma',aura:'nenhuma'};
+const isNone=(g,id)=>id===NONE[g];
+const tierOf=(g,id)=>RAR_ORD[rarOf(g,id)];
+const labelOf=(g,id)=>{const o=CAT[g].find(x=>x.id===id);return o?o.l:id;};
+function canGrow(g,id){const list=CAT[g].filter(o=>!isNone(g,o.id));if(isNone(g,id))return list.length>0;const t=tierOf(g,id);return list.some(o=>tierOf(g,o.id)>t);}
+function wpick(opts){let tot=opts.reduce((s,o)=>s+o.w,0),r=Math.random()*tot;for(const o of opts){r-=o.w;if(r<=0)return o.id;}return opts[opts.length-1].id;}
+/* escolhe um upgrade de um grupo: se está "nenhuma" pega tier baixo; senão um tier ESTRITAMENTE maior.
+   peso = afinidade c/ alinhamento × preferência por subir de pouco em pouco (não pular pro lendário). */
+function grow(g,cur){const b=band(G.alignment);let c=CAT[g].filter(o=>!isNone(g,o.id));
+  if(isNone(g,cur)){const low=c.filter(o=>tierOf(g,o.id)<=1);c=low.length?low:c;}
+  else{const t=tierOf(g,cur);c=c.filter(o=>tierOf(g,o.id)>t);}
+  if(!c.length)return cur;
+  return wpick(c.map(o=>({id:o.id,w:affMult(o.a,b)*(4-tierOf(g,o.id))})));}
+function wingColorFor(t){if(['demonio','dragao','morcego'].includes(t))return '#7C2B3E';if(t==='fenix')return '#E8703A';if(['anjo','penas'].includes(t))return '#FBF3DA';if(t==='coracao')return '#F1A8BE';if(['cristal','gelo'].includes(t))return '#9FCBE8';if(t==='libelula')return '#A6D8E8';if(t==='folha')return '#8FC58A';if(['borboleta','fada'].includes(t))return ACC[AK[rndi(AK.length)]];return '#CFC4E8';}
+
+/* crescimentos individuais — cada um devolve um rótulo do que mudou (ou null se nada) */
+function growLeg(){if(!G.legs.present){G.legs={present:true,style:'oval'};return 'perninhas surgem';}const o=['oval','patinha','garrinha','botinha'],i=o.indexOf(G.legs.style);if(i>=0&&i<3){G.legs.style=o[i+1];return 'patas evoluem ('+G.legs.style+')';}return null;}
+function growArm(){if(!G.arms.present){G.arms={present:true,style:'patinha'};return 'bracinhos surgem';}const o=['patinha','garrinha','tentaculo'],i=o.indexOf(G.arms.style);if(i>=0&&i<2){G.arms.style=o[i+1];return 'braços evoluem ('+G.arms.style+')';}return null;}
+function growWing(){const c=G.wings.count||0;if(c===0){G.wings.type=grow('wings','nenhuma');G.wings.color=wingColorFor(G.wings.type);G.wings.count=1;return 'asa surge (1 lado: '+labelOf('wings',G.wings.type)+')';}if(c===1){G.wings.count=2;return 'par de asas completo';}const up=grow('wings',G.wings.type);if(up!==G.wings.type){G.wings.type=up;G.wings.color=wingColorFor(up);return 'asas evoluem ('+labelOf('wings',up)+')';}return null;}
+function growAura(){if(G.aura.type==='nenhuma'){applyAuraPreset(grow('aura','nenhuma'));return 'aura desperta ('+labelOf('aura',G.aura.type)+')';}const up=grow('aura',G.aura.type);if(up!==G.aura.type){applyAuraPreset(up);return 'aura evolui ('+labelOf('aura',up)+')';}const o=['baixa','media','alta','maxima'],i=o.indexOf(G.aura.inten);if(i<3){G.aura.inten=o[i+1];return 'aura intensifica';}return null;}
+function addMarkLife(){const av=MARK_TYPES.filter(m=>!G.marks.find(x=>x.type===m.id));if(!av.length)return null;const t=av[rndi(av.length)].id;G.marks.push({type:t,cause:band(G.alignment)});return 'marca: '+t;}
+
+/* pool de ações por fase (índice do estágio). disponível() garante monotonicidade. */
+const GROWTH=[
+  {id:'olhos', stages:[1,2,3], avail:()=>G.eyes.count<3, apply:()=>{G.eyes.count++;return 'olhos +1 ('+G.eyes.count+')';}},
+  {id:'perna', stages:[1,2],   avail:()=>!G.legs.present||G.legs.style!=='botinha', apply:growLeg},
+  {id:'orelha',stages:[1,3],   avail:()=>canGrow('ears',G.ears.type), apply:()=>{G.ears.type=grow('ears',G.ears.type);return 'orelhas: '+labelOf('ears',G.ears.type);}},
+  {id:'braco', stages:[2,3],   avail:()=>!G.arms.present||G.arms.style!=='tentaculo', apply:growArm},
+  {id:'rabo',  stages:[2,3],   avail:()=>canGrow('tail',G.tail.type), apply:()=>{G.tail.type=grow('tail',G.tail.type);return 'cauda: '+labelOf('tail',G.tail.type);}},
+  {id:'asa',   stages:[2,3],   avail:()=>(G.wings.count||0)<2||canGrow('wings',G.wings.type), apply:growWing},
+  {id:'focinho',stages:[3],    avail:()=>canGrow('snout',G.snout), apply:()=>{G.snout=grow('snout',G.snout);return 'focinho/bico: '+labelOf('snout',G.snout);}},
+  {id:'aura',  stages:[3,4],   avail:()=>G.aura.type==='nenhuma'?canGrow('aura','nenhuma'):true, apply:growAura},
+  {id:'antena',stages:[1,3],   avail:()=>!G.extra.antena, apply:()=>{G.extra.antena=true;return 'antena';}},
+  {id:'pelagem',stages:[1,4],  avail:()=>G.pattern.type==='none', apply:()=>{G.pattern.type=PATTERNS[1+rndi(4)];return 'pelagem: '+PATTERN_L[G.pattern.type];}},
+  {id:'marca', stages:[4],     avail:()=>G.marks.length<4&&MARK_TYPES.some(m=>!G.marks.find(x=>x.type===m.id)), apply:addMarkLife}
+];
+function growStage(idx){const pool=GROWTH.filter(a=>a.stages.includes(idx)&&a.avail());const done=[];
+  for(let k=0;k<2&&pool.length;k++){const i=rndi(pool.length),a=pool.splice(i,1)[0];if(a.avail()){const r=a.apply();if(r)done.push(r);}}
+  return done;}
+
+/* NASCIMENTO: corpo + olhos (1 ou 2) aleatórios; resto mínimo (cresce nas fases) */
+function birth(){
+  generation++; stageIdx=0; dead=false; lastLog='🐣 Nasceu — corpo e olhos definidos.';
+  G.seed=rndi(1e9); G.alignment=0;
+  G.body={type:rollGroup('bodyType'),color:rollColorByBand(),shape:rollGroup('body')};
+  G.eyes={count:Math.random()<0.5?1:2,color:EK[rndi(EK.length)],color2:EK[rndi(EK.length)],hetero:false,style:'redondo'};
+  G.wings={type:'nenhuma',color:'#CFC4E8',count:0};
+  G.ears={type:'nenhuma'}; G.tail={type:'nenhum'};
+  G.arms={present:false,style:'patinha'}; G.legs={present:false,style:'oval'};
+  G.snout='nenhum'; applyAuraPreset('nenhuma');
+  G.accent={color:AK[rndi(AK.length)],mark:'nenhuma',cheeks:true};
+  G.extra={antena:false}; G.pattern={type:'none'}; G.marks=[];
+}
+
+/* RESPOSTA do usuário -> bem/mal -> alinhamento -> avança fase e cresce (≤2, monotônico) */
+function respond(kind){
+  if(dead){ birth(); renderControls(); draw(); return; }      /* após a Morte, a resposta traz o Renascimento */
+  const step=14;
+  if(kind==='luz')        G.alignment=clamp(G.alignment+step,-100,100);
+  else if(kind==='trevas')G.alignment=clamp(G.alignment-step,-100,100);
+  else                    G.alignment=clamp(G.alignment+((Math.random()<0.5?-1:1)*(8+rndi(16))),-100,100);
+  stageIdx++;
+  if(STAGES[stageIdx]==='Morte'){ dead=true; lastLog='✝ Morte. A próxima resposta traz o Renascimento.'; renderControls(); draw(); return; }
+  const did=growStage(stageIdx);
+  lastLog='['+STAGES[stageIdx]+'] '+(did.length?did.join(' · '):'sem novidades nesta fase');
+  renderControls(); draw();
+}
+function roll(){
+  G.seed=Math.floor(Math.random()*1e9);
+  G.body.color=rollColorByBand();
+  G.body.shape=rollGroup('body');
+  G.body.type=rollGroup('bodyType');
+  G.wings.type=rollGroup('wings');
+  const wt=G.wings.type, rndAcc=()=>ACC[AK[Math.floor(Math.random()*AK.length)]];
+  if(['demonio','dragao','morcego'].includes(wt))G.wings.color='#7C2B3E';
+  else if(wt==='fenix')G.wings.color='#E8703A';
+  else if(['anjo','penas'].includes(wt))G.wings.color='#FBF3DA';
+  else if(wt==='borboleta'||wt==='fada')G.wings.color=rndAcc();
+  else if(wt==='coracao')G.wings.color='#F1A8BE';
+  else if(wt==='cristal'||wt==='gelo')G.wings.color='#9FCBE8';
+  else if(wt==='libelula')G.wings.color='#A6D8E8';
+  else if(wt==='folha')G.wings.color='#8FC58A';
+  else G.wings.color='#CFC4E8';
+  G.wings.count=wt==='nenhuma'?0:2; dead=false;
+  G.ears.type=rollGroup('ears');
+  G.tail.type=rollGroup('tail');
+  applyAuraPreset(rollGroup('aura'));
+  /* jitter nos knobs -> auras visualmente únicas mesmo no mesmo tipo */
+  G.aura.density=clamp(Math.round(G.aura.density*(0.7+Math.random()*0.8)),3,80);
+  G.aura.speed=+clamp(G.aura.speed*(0.7+Math.random()*0.6),0.1,SPEED_CAP).toFixed(2);
+  G.aura.size=+clamp(G.aura.size*(0.7+Math.random()*0.8),1,18).toFixed(1);
+  G.aura.glow=+clamp(G.aura.glow+(Math.random()*0.3-0.12),0,1).toFixed(2);
+  G.aura.opacity=+clamp(G.aura.opacity*(0.8+Math.random()*0.4),0.1,1).toFixed(2);
+  if(Math.random()<0.22)G.aura.shape=SHAPES[Math.floor(Math.random()*SHAPES.length)];
+  if(Math.random()<0.18)G.aura.spin=!G.aura.spin;
+  if(Math.random()<0.18)G.aura.twinkle=!G.aura.twinkle;
+  if(Math.random()<0.10)G.aura.hueShift=true;
+  const armId=rollGroup('arms');G.arms={present:armId!=='nenhum',style:armId==='nenhum'?'patinha':armId};
+  const legId=rollGroup('legs');G.legs={present:legId!=='nenhuma',style:legId==='nenhuma'?'oval':legId};
+  G.eyes={count:[2,2,2,1,3][Math.floor(Math.random()*5)],
+    color:EK[Math.floor(Math.random()*EK.length)],
+    color2:EK[Math.floor(Math.random()*EK.length)],
+    hetero:Math.random()<0.15,
+    style:Math.random()<0.55?'redondo':EYE_STYLES[Math.floor(Math.random()*EYE_STYLES.length)]};
+  G.snout=rollGroup('snout');
+  G.accent={color:AK[Math.floor(Math.random()*AK.length)],mark:['barriga','barriga','pintas','nenhuma'][Math.floor(Math.random()*4)],cheeks:Math.random()<0.7};
+  G.extra={antena:Math.random()<0.2};
+  G.pattern={type:Math.random()<0.45?'none':PATTERNS[1+Math.floor(Math.random()*4)]};
+  G.marks=[]; if(Math.random()<0.4)G.marks.push({type:MARK_TYPES[Math.floor(Math.random()*MARK_TYPES.length)].id});
+  renderControls();draw();
+}
+
+/* ============ INÍCIO ============ */
+birth();
+renderControls();
+draw();
+</script>
+</body>
+</html>

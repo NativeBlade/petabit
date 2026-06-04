@@ -1,0 +1,5 @@
+# app/Native/DeepLinks
+#
+# Deep link route handlers.
+#
+# See ARCHITECTURE.md in the NativeBlade docs for the full pattern.

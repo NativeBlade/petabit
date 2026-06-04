@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>petabit</title>
+    <style>
+        @font-face { font-family: 'Cinzel'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/cinzel/cinzel-400.woff2') format('woff2'); }
+        @font-face { font-family: 'Cinzel'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/cinzel/cinzel-600.woff2') format('woff2'); }
+        @font-face { font-family: 'Cinzel'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/cinzel/cinzel-700.woff2') format('woff2'); }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #080810;
+            color: #e8e8f0;
+            font-family: system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Splash ----------------------------------------------------------- */
+        #splash {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            height: 100vh;
+            gap: 30px;
+            padding: 0 28px;
+            text-align: center;
+        }
+        /* dotted texture, same as the app background */
+        #splash::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.2;
+            background-image: radial-gradient(circle, rgba(255,255,255,0.35) 1px, transparent 1px);
+            background-size: 28px 28px;
+        }
+        /* soft glow from the top */
+        #splash::after {
+            content: "";
+            position: absolute;
+            top: -10%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 340px;
+            height: 340px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(251,191,36,0.10) 0%, transparent 65%);
+            pointer-events: none;
+        }
+
+        .egg-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+        }
+        .egg-aura {
+            position: absolute;
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,255,255,0.07) 0%, transparent 70%);
+            animation: pulse-egg 4s ease-in-out infinite;
+        }
+        .splash-logo {
+            position: relative;
+            z-index: 1;
+            width: 200px;
+            height: auto;
+            max-width: 62vw;
+            animation: float-pet 4s ease-in-out infinite;
+            filter: drop-shadow(0 0 24px rgba(255,255,255,0.18));
+        }
+
+        /* loading dots replace the old spinner */
+        .loader { z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+        .dots { display: flex; gap: 7px; }
+        .dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #fbbf24;
+            opacity: 0.4;
+            animation: dot-pulse 1.2s ease-in-out infinite;
+        }
+        .dots span:nth-child(2) { animation-delay: 0.2s; }
+        .dots span:nth-child(3) { animation-delay: 0.4s; }
+        .status {
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            color: rgba(255,255,255,0.28);
+        }
+
+        #app { display: none; flex: 1; width: 100%; border: none; }
+
+        @keyframes float-pet {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        @keyframes pulse-egg {
+            0%, 100% { filter: drop-shadow(0 0 15px rgba(255,255,255,0.4)); transform: scale(1); }
+            50% { filter: drop-shadow(0 0 30px rgba(255,255,255,0.8)); transform: scale(1.04); }
+        }
+        @keyframes dot-pulse {
+            0%, 100% { opacity: 0.25; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.15); }
+        }
+    </style>
+</head>
+<body>
+    <div id="splash">
+        <div class="egg-wrap">
+            <div class="egg-aura"></div>
+            <img class="splash-logo" src="logo.png" alt="Petabit"/>
+        </div>
+
+        <div class="loader">
+            <div class="dots"><span></span><span></span><span></span></div>
+            <div class="status" id="status"></div>
+        </div>
+    </div>
+    <iframe id="app"></iframe>
+    <script>
+        // Portal mode: if a dev bundle URL is persisted, expose it globally so
+        // filesystem.js and hot-reload.js pick it up before the app boots.
+        try {
+            var saved = localStorage.getItem('nb:bundleBase');
+            if (saved) window.__NB_BUNDLE_BASE__ = saved;
+        } catch (e) {}
+
+        // iOS WKWebView ignores user-scalable=no in some versions; block the
+        // pinch gesture directly so the app cannot zoom.
+        ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (evt) {
+            document.addEventListener(evt, function (e) { e.preventDefault(); }, { passive: false });
+        });
+    </script>
+    <script type="module" src="./nativeblade.js"></script>
+</body>
+</html>

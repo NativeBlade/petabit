@@ -1,0 +1,5 @@
+# app/Native/Push
+#
+# Push notification handlers. Each is a class with handle(PushPayload $payload).
+#
+# See ARCHITECTURE.md in the NativeBlade docs for the full pattern.

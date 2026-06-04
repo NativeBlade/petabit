@@ -1,0 +1,20 @@
+{
+    "identifier": "mobile",
+    "description": "Additional capabilities for mobile platforms",
+    "platforms": [
+        "android",
+        "iOS"
+    ],
+    "windows": [
+        "main"
+    ],
+    "permissions": [
+        "barcode-scanner:allow-scan",
+        "barcode-scanner:allow-cancel",
+        "barcode-scanner:allow-check-permissions",
+        "barcode-scanner:allow-request-permissions",
+        "barcode-scanner:allow-vibrate",
+        "barcode-scanner:allow-open-app-settings",
+        "nativeblade-push:default"
+    ]
+}

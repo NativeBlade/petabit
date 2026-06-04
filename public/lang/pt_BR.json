@@ -1,0 +1,16 @@
+{
+    "splash.loading": "Despertando seu Petabit…",
+    "splash.waiting": "Aguardando o servidor… (:attempts)",
+    "splash.connected": "Conectado!",
+    "splash.failed": "Não foi possível conectar ao servidor",
+    "boot.runtime": "Invocando o runtime…",
+    "boot.filesystem": "Preparando seu mundo…",
+    "boot.bundle": "Carregando o Petabit…",
+    "boot.bundle_progress": "Carregando arquivos… :loaded/:total",
+    "boot.config": "Alinhando as estrelas…",
+    "boot.migrations": "Moldando o genoma…",
+    "boot.state": "Restaurando sua jornada…",
+    "boot.rendering": "Quase lá…",
+    "boot.loading": "Carregando…",
+    "boot.ready": "Pronto!"
+}

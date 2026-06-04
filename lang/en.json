@@ -1,0 +1,16 @@
+{
+    "splash.loading": "Waking your Petabit…",
+    "splash.waiting": "Waiting for the server… (:attempts)",
+    "splash.connected": "Connected!",
+    "splash.failed": "Couldn't reach the server",
+    "boot.runtime": "Summoning the runtime…",
+    "boot.filesystem": "Preparing your world…",
+    "boot.bundle": "Loading Petabit…",
+    "boot.bundle_progress": "Loading files… :loaded/:total",
+    "boot.config": "Aligning the stars…",
+    "boot.migrations": "Shaping the genome…",
+    "boot.state": "Restoring your journey…",
+    "boot.rendering": "Almost there…",
+    "boot.loading": "Loading…",
+    "boot.ready": "Ready!"
+}

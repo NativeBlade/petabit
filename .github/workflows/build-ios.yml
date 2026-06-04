@@ -1,0 +1,400 @@
+name: Build iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_testflight:
+        description: 'Upload to TestFlight after build'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    env:
+      NODE_VERSION: '20'
+      PHP_VERSION: '8.3'
+
+    steps:
+      # ─────────────────────────────────────────────────────────────
+      # 1. Checkout
+      # ─────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ─────────────────────────────────────────────────────────────
+      # 2. Xcode selection (must be stable, not Beta — App Store rejects)
+      # ─────────────────────────────────────────────────────────────
+      - name: Select stable Xcode 26 (App Store rejects beta builds)
+        run: |
+          # Returns "Beta" if the Xcode at $1 is a beta build, "GM" otherwise.
+          # Checks (in order):
+          #   1. LicenseInfo.plist licenseType (most reliable: "Beta" or "GM")
+          #   2. Path contains 'beta'
+          #   3. ProductBuildVersion has a trailing letter (Apple beta seed marker, e.g. "17F5054h")
+          xcode_kind() {
+            local app="$1"
+            local L
+            L=$(defaults read "$app/Contents/Resources/LicenseInfo.plist" licenseType 2>/dev/null || echo "")
+            case "$L" in Beta|*[Bb]eta*) echo "Beta"; return ;; esac
+            case "$app" in *[Bb][Ee][Tt][Aa]*) echo "Beta"; return ;; esac
+            local B
+            B=$(defaults read "$app/Contents/version.plist" ProductBuildVersion 2>/dev/null || echo "")
+            if echo "$B" | grep -qE '^[0-9]+[A-Z][0-9]+[a-z]$'; then
+              echo "Beta"
+              return
+            fi
+            echo "GM"
+          }
+
+          echo "=== Available Xcode installations ==="
+          for app in /Applications/Xcode*.app; do
+            [ -d "$app" ] || continue
+            V=$(defaults read "$app/Contents/version.plist" CFBundleShortVersionString 2>/dev/null || echo "?")
+            B=$(defaults read "$app/Contents/version.plist" ProductBuildVersion 2>/dev/null || echo "?")
+            L=$(defaults read "$app/Contents/Resources/LicenseInfo.plist" licenseType 2>/dev/null || echo "?")
+            K=$(xcode_kind "$app")
+            echo "  $app  ->  $V ($B)  [license: $L, kind: $K]"
+          done
+          echo ""
+
+          # Pick the highest stable Xcode 26+ (excluding any beta).
+          SELECTED=""
+          SELECTED_VERSION=""
+          for app in /Applications/Xcode*.app; do
+            [ -d "$app" ] || continue
+
+            K=$(xcode_kind "$app")
+            [ "$K" = "Beta" ] && continue
+
+            V=$(defaults read "$app/Contents/version.plist" CFBundleShortVersionString 2>/dev/null || echo "0")
+            case "$V" in 26*|27*|28*) ;; *) continue ;; esac
+
+            if [ -z "$SELECTED_VERSION" ] || [ "$(printf '%s\n%s\n' "$SELECTED_VERSION" "$V" | sort -V | tail -n 1)" = "$V" ]; then
+              SELECTED="$app"
+              SELECTED_VERSION="$V"
+            fi
+          done
+
+          if [ -z "$SELECTED" ]; then
+            echo "::error::No stable Xcode 26+ found on this runner."
+            echo "::error::Builds made with beta Xcode are rejected by the App Store."
+            echo "::error::Wait for the runner image to ship stable Xcode 26,"
+            echo "::error::or switch 'runs-on:' to a runner that has it preinstalled."
+            exit 1
+          fi
+
+          echo "=== Selected Xcode $SELECTED_VERSION ==="
+          echo "Path: $SELECTED"
+          sudo xcode-select -s "$SELECTED/Contents/Developer"
+          xcodebuild -version
+
+      # ─────────────────────────────────────────────────────────────
+      # 3. Toolchains (PHP, Node, Rust)
+      # ─────────────────────────────────────────────────────────────
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, intl, dom, fileinfo, sqlite3, pdo_sqlite, gd
+          coverage: none
+          tools: composer:v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMPOSER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      # ─────────────────────────────────────────────────────────────
+      # 4. Caches (Composer, CocoaPods — cargo cache comes after platform
+      #    scaffolding so it can hash the right Cargo.lock)
+      # ─────────────────────────────────────────────────────────────
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.composer/cache
+            vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cocoapods
+            ~/Library/Caches/CocoaPods
+            src-tauri/gen/apple/Pods
+          key: cocoapods-${{ hashFiles('src-tauri/gen/apple/Podfile.lock') }}
+          restore-keys: cocoapods-
+
+      # ─────────────────────────────────────────────────────────────
+      # 5. Project dependencies + runtime env
+      # ─────────────────────────────────────────────────────────────
+      - name: Install PHP/JS dependencies
+        run: |
+          composer install --no-dev --prefer-dist --no-progress
+          npm ci
+
+      - name: Use .env.deploy as runtime .env
+        run: |
+          if [ -f .env.deploy ]; then
+            cp .env.deploy .env
+          elif [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            touch .env
+          fi
+          php artisan key:generate --force || true
+
+      # ─────────────────────────────────────────────────────────────
+      # 6. Signing setup (keychain + provisioning profile)
+      # ─────────────────────────────────────────────────────────────
+      - name: Decode signing certificate
+        env:
+          IOS_DIST_CERT_BASE64: ${{ secrets.IOS_DIST_CERT_BASE64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+        run: |
+          echo "$IOS_DIST_CERT_BASE64" | base64 --decode > $RUNNER_TEMP/cert.p12
+
+          security create-keychain -p ci $RUNNER_TEMP/build.keychain
+          security set-keychain-settings -lut 21600 $RUNNER_TEMP/build.keychain
+          security default-keychain -s $RUNNER_TEMP/build.keychain
+          security unlock-keychain -p ci $RUNNER_TEMP/build.keychain
+
+          security import $RUNNER_TEMP/cert.p12 \
+            -k $RUNNER_TEMP/build.keychain \
+            -P "$IOS_DIST_CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci $RUNNER_TEMP/build.keychain
+          security list-keychains -d user -s $RUNNER_TEMP/build.keychain login.keychain
+
+      - name: Install provisioning profile
+        id: profile
+        env:
+          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/distribution.mobileprovision
+          echo "$IOS_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          # Extract UUID and name from the mobileprovision (it's a CMS-signed plist)
+          PROFILE_PLIST=$(security cms -D -i "$PROFILE_PATH")
+          PROFILE_UUID=$(echo "$PROFILE_PLIST" | /usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin)
+          PROFILE_NAME=$(echo "$PROFILE_PLIST" | /usr/libexec/PlistBuddy -c "Print :Name" /dev/stdin)
+
+          echo "uuid=$PROFILE_UUID" >> "$GITHUB_OUTPUT"
+          echo "name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
+
+          # Move profile to the UUID-named location Xcode actually looks at
+          cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PROFILE_UUID".mobileprovision
+
+          echo "Installed profile: $PROFILE_NAME ($PROFILE_UUID)"
+
+      # ─────────────────────────────────────────────────────────────
+      # 7. Native scaffolding (creates src-tauri/gen/apple + locks)
+      # ─────────────────────────────────────────────────────────────
+      - name: Add iOS platform
+        run: php artisan nativeblade:add ios
+
+      - name: Configure NativeBlade
+        run: php artisan nativeblade:config
+
+      # ─────────────────────────────────────────────────────────────
+      # 8. Cargo cache. Swatinem/rust-cache prunes stale target/ entries
+      #    so it stays under the 10GB actions/cache size limit between
+      #    runs, and hashes Cargo.{toml,lock} + rust-toolchain for keys.
+      # ─────────────────────────────────────────────────────────────
+      - name: Cache Cargo (registry + target)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ios
+          cache-on-failure: true
+          shared-key: portal-ios
+
+      # ─────────────────────────────────────────────────────────────
+      # 9. Xcode project patching for manual signing
+      # ─────────────────────────────────────────────────────────────
+      - name: Write ExportOptions.plist
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PROFILE_NAME: ${{ steps.profile.outputs.name }}
+        run: |
+          APPLE_DIR=src-tauri/gen/apple
+
+          cat > "$APPLE_DIR/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>$APPLE_TEAM_ID</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.nativeblade.app</key>
+                  <string>$PROFILE_NAME</string>
+              </dict>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
+              <key>uploadSymbols</key>
+              <true/>
+              <key>uploadBitcode</key>
+              <false/>
+          </dict>
+          </plist>
+          EOF
+
+          echo "ExportOptions.plist:"
+          cat "$APPLE_DIR/ExportOptions.plist"
+
+      - name: Patch Xcode project for manual signing
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PROFILE_UUID: ${{ steps.profile.outputs.uuid }}
+        run: |
+          PROJECT=$(find src-tauri/gen/apple -name "*.xcodeproj" | head -n 1)
+          if [ -z "$PROJECT" ]; then
+            echo "::error::No .xcodeproj found"
+            exit 1
+          fi
+
+          ruby <<RUBY
+          require 'xcodeproj'
+
+          project = Xcodeproj::Project.open('$PROJECT')
+          project.targets.each do |target|
+            target.build_configurations.each do |config|
+              config.build_settings['CODE_SIGN_STYLE']               = 'Manual'
+              config.build_settings['DEVELOPMENT_TEAM']              = ENV['APPLE_TEAM_ID']
+              config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ENV['PROFILE_UUID']
+              config.build_settings['CODE_SIGN_IDENTITY']            = 'Apple Distribution'
+              config.build_settings['CODE_SIGN_IDENTITY[sdk=iphoneos*]'] = 'Apple Distribution'
+            end
+          end
+          project.save
+          puts "Patched #{project.targets.size} target(s) for manual signing"
+          RUBY
+
+      # ─────────────────────────────────────────────────────────────
+      # 10. Sanity checks + Xcode 26 workaround
+      # ─────────────────────────────────────────────────────────────
+      - name: Verify iOS device SDK is present
+        run: |
+          echo "=== iOS SDKs available ==="
+          xcodebuild -showsdks 2>&1 | grep -i ios || true
+          echo ""
+
+          # We only build for iOS devices (archive + IPA), so the iphoneos
+          # device SDK is sufficient. We do NOT need the iOS Simulator runtime
+          # (~8GB), which is what `-downloadPlatform iOS` actually fetches when
+          # the device SDK is already installed.
+          if xcodebuild -showsdks 2>&1 | grep -qE "iphoneos[0-9]"; then
+            echo "iOS device SDK is available, ready to build."
+            exit 0
+          fi
+
+          echo "::error::iOS device SDK (iphoneos) not found on this runner."
+          echo "::error::The macos runner image needs Xcode with iOS platform components."
+          exit 1
+
+      - name: Install xcodebuild shim (workaround for Xcode 26 + Tauri)
+        run: |
+          # Tauri 2 calls `xcodebuild` without `-destination`. Xcode 26 rejects
+          # this with "Found no destinations for the scheme". Shim adds
+          # `-destination generic/platform=iOS` to build/archive actions.
+          REAL=$(xcrun --find xcodebuild)
+          mkdir -p $HOME/.xcshim
+
+          cat > $HOME/.xcshim/xcodebuild <<EOF
+          #!/bin/bash
+          ARGS=("\$@")
+          HAS_DEST=false
+          NEEDS_DEST=false
+          for arg in "\${ARGS[@]}"; do
+            if [[ "\$arg" == "-destination" ]]; then HAS_DEST=true; fi
+            if [[ "\$arg" == "build" || "\$arg" == "archive" ]]; then NEEDS_DEST=true; fi
+          done
+          if ! \$HAS_DEST && \$NEEDS_DEST; then
+            ARGS+=("-destination" "generic/platform=iOS")
+          fi
+          exec "$REAL" "\${ARGS[@]}"
+          EOF
+
+          chmod +x $HOME/.xcshim/xcodebuild
+          echo "$HOME/.xcshim" >> "$GITHUB_PATH"
+          echo "Shim installed → $HOME/.xcshim/xcodebuild"
+
+      # ─────────────────────────────────────────────────────────────
+      # 11. Build
+      # ─────────────────────────────────────────────────────────────
+      - name: Build iOS
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: php artisan nativeblade:build ios
+
+      # ─────────────────────────────────────────────────────────────
+      # 12. Artifacts + optional TestFlight upload
+      # ─────────────────────────────────────────────────────────────
+      - name: Locate IPA
+        id: ipa
+        run: |
+          IPA=$(find build/ios src-tauri/gen/apple -name "*.ipa" | head -n 1)
+          if [ -z "$IPA" ]; then
+            echo "::error::No IPA produced"
+            exit 1
+          fi
+          echo "path=$IPA" >> "$GITHUB_OUTPUT"
+          echo "Built: $IPA"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: ${{ steps.ipa.outputs.path }}
+          retention-days: 14
+
+      - name: Upload to TestFlight
+        if: github.event.inputs.upload_to_testflight == 'true' || startsWith(github.ref, 'refs/tags/v')
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file "${{ steps.ipa.outputs.path }}" \
+            --username "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --verbose
+
+      # ─────────────────────────────────────────────────────────────
+      # 13. Cleanup
+      # ─────────────────────────────────────────────────────────────
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          security delete-keychain $RUNNER_TEMP/build.keychain || true
+          rm -f $RUNNER_TEMP/cert.p12 || true
