@@ -42,11 +42,17 @@ class VerifyCode extends Component
         return mb_strlen($this->code) === self::CODE_LENGTH;
     }
 
-    public function confirm(PetabitApiClient $api)
+    public function confirm(?string $code = null)
     {
+        if ($code !== null) {
+            $this->code = mb_substr(preg_replace('/\D/', '', $code), 0, self::CODE_LENGTH);
+        }
+
         if (! $this->codeOk()) {
             return NativeBlade::impact('heavy')->toResponse();
         }
+
+        $api = app(PetabitApiClient::class);
 
         try {
             $result = $api->verify(
