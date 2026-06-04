@@ -152,10 +152,8 @@ return [
     ],
 
     'reminders' => [
-        'title'     => 'Your Petabit is waiting',
-        'morning'   => 'Good morning! Time to tend your habits ✦',
-        'afternoon' => "Good afternoon! Don't forget today's habits ✦",
-        'night'     => 'Last call — finish your habits before bed ✦',
+        'title' => 'Your Petabit is waiting',
+        'body'  => "Don't forget today's habits ✦",
     ],
 
     'errors' => [

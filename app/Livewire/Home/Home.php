@@ -54,6 +54,7 @@ class Home extends Component
             $this->evolutionDue = (bool) ($summary['evolution_due'] ?? false);
             $this->petDead = (bool) ($summary['pet']['dead'] ?? false);
             $this->reborn = (bool) ($summary['reborn'] ?? false);
+            ReminderState::setLines($summary['reminder_lines'] ?? []);
 
             HabitsState::set($api->habits());
             // Restore today's checks (persisted server-side).
@@ -96,16 +97,16 @@ class Home extends Component
 
     /* ---- local habit reminders (scheduled client-side) ---- */
 
-    /** Reminder slots: local hour-of-day for morning / afternoon / night. */
-    private const REMINDER_SLOTS = ['morning' => 8, 'afternoon' => 13, 'night' => 19];
+    /** Local hour-of-day for the single daily reminder (≈ late afternoon). */
+    private const REMINDER_HOUR = 17;
 
     /**
      * (Re)schedule the next 7 days of local habit reminders. Called from the
      * view with the device timezone + current epoch (the WASM clock is UTC and
-     * doesn't know the device tz). For each upcoming day that has an active
-     * habit, three reminders (08/13/19 local) are scheduled; today's are dropped
-     * once every habit due today is done. Notifications no longer wanted are
-     * cancelled. Idempotent — safe to call on every open and after each toggle.
+     * doesn't know the device tz). Each upcoming day that has an active habit
+     * gets one reminder at 17:00 local; today's is dropped once every habit due
+     * today is done. Notifications no longer wanted are cancelled. Idempotent —
+     * safe to call on every open and after each toggle.
      */
     public function syncReminders(string $tz, int $nowMs)
     {
@@ -127,33 +128,38 @@ class Home extends Component
 
         $todayDone = $this->allHabitsDoneOn($now->dayOfWeekIso);
 
-        $desired = []; // id => [slot, Carbon $when]
+        $desired = []; // id => Carbon $when
         for ($d = 0; $d < 7; $d++) {
             $day = $now->copy()->addDays($d);
             if (! $hasHabit($day->dayOfWeekIso)) {
                 continue;
             }
-            foreach (self::REMINDER_SLOTS as $slot => $hour) {
-                $when = $day->copy()->setTime($hour, 0);
-                if ($when->lte($now) || ($d === 0 && $todayDone)) {
-                    continue; // past, or today already cleared
-                }
-                $desired['pb-rem-'.$day->format('Y-m-d').'-'.$slot] = [$slot, $when];
+            $when = $day->copy()->setTime(self::REMINDER_HOUR, 0);
+            if ($when->lte($now) || ($d === 0 && $todayDone)) {
+                continue; // past, or today already cleared
             }
+            $desired['pb-rem-'.$day->format('Y-m-d')] = $when;
         }
 
         $cancel = array_diff(ReminderState::scheduled(), array_keys($desired));
+
+        // Draw the body from the pet's alignment-toned AI pool (a stable line per
+        // day so re-syncs don't reshuffle), falling back to the static copy.
+        $lines = ReminderState::lines();
+        $bodyFor = fn (string $id): string => $lines
+            ? $lines[crc32($id) % count($lines)]
+            : __('messages.reminders.body');
 
         $response = NativeBlade::response();
         foreach ($cancel as $id) {
             $response = $response->cancelNotification($id);
         }
-        foreach ($desired as $id => [$slot, $when]) {
+        foreach ($desired as $id => $when) {
             $response = $response->notification(fn (Notification $n) => $n
                 ->id($id)
                 ->channel('petabit')
                 ->title(__('messages.reminders.title'))
-                ->body(__('messages.reminders.'.$slot))
+                ->body($bodyFor($id))
                 ->at($when));
         }
 
