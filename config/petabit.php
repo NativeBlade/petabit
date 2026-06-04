@@ -7,5 +7,5 @@ return [
     | - Android emulator:   http://10.0.2.2:8000
     | - Physical device:    http://<your-LAN-ip>:8000
     */
-    'api_url' => env('PETABIT_API_URL', null),
+    'api_url' => env('PETABIT_API_URL', "https://pet4bit.com"),
 ];

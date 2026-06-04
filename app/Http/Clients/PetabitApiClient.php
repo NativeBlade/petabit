@@ -18,7 +18,7 @@ class PetabitApiClient
 
     private function http(): PendingRequest
     {
-        $request = Http::baseUrl('http://192.168.1.11:8000/api')
+        $request = Http::baseUrl(config('petabit.api_url').'/api')
             ->acceptJson()
             ->withHeaders(['x-lang' => LocaleState::current()])
             ->timeout(self::TIMEOUT_SECONDS);
