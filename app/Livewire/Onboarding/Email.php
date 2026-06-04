@@ -74,6 +74,8 @@ class Email extends Component
 
     public function render()
     {
-        return view('livewire.onboarding.email');
+        return view('livewire.onboarding.email', [
+            'isNew' => OnboardingState::isNew(),
+        ]);
     }
 }

@@ -2,7 +2,7 @@
     <x-petabit.bg/>
 
     <div style="flex:1; display:flex; flex-direction:column; position:relative; z-index:10;">
-        <x-petabit.dots :step="1"/>
+        <x-petabit.dots :step="1" back="/"/>
 
         <div style="padding:0 24px; flex:1; display:flex; flex-direction:column;">
             <h1 style="font-family:'Cinzel',serif; font-size:27px; color:#fff; margin-bottom:6px;">{{ __('messages.nickname.title') }}</h1>

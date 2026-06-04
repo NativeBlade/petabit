@@ -2,14 +2,9 @@
     <x-petabit.bg/>
 
     <div style="flex:1; display:flex; flex-direction:column; position:relative; z-index:10;">
-        <x-petabit.dots :step="3"/>
+        <x-petabit.dots :step="3" back="/email"/>
 
         <div x-data="{ code: '' }" style="padding:0 24px; flex:1; display:flex; flex-direction:column;">
-            <button wire:nb-navigate="/" nb-feedback
-                style="position:absolute; top:44px; left:8px; background:none; border:none; color:rgba(255,255,255,0.4); cursor:pointer;">
-                <x-nativeblade-icon name="caret-left" size="22"/>
-            </button>
-
             <h1 style="font-family:'Cinzel',serif; font-size:27px; color:#fff; margin-bottom:6px;">{{ $isNew ? __('messages.verify.title_new') : __('messages.verify.title_existing') }}</h1>
             <p style="color:rgba(255,255,255,0.38); font-size:14px; margin-bottom:8px;">{{ __('messages.verify.sent_to') }}</p>
             <p style="color:rgba(255,255,255,0.75); font-size:14px; font-weight:600; margin-bottom:32px;">{{ $email ?: 'seu@email.com' }}</p>
