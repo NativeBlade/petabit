@@ -13,6 +13,9 @@ use NativeBlade\Facades\NativeBladeConfig;
 
 class AppServiceProvider extends ServiceProvider
 {
+    const VERSION = '1.0.0';
+    const BUNDLE_BERSION = 1;
+
     public function register(): void
     {
         //
@@ -22,14 +25,10 @@ class AppServiceProvider extends ServiceProvider
     {
         NativeBladeConfig::name('Petabit');
 
-        // Only the optional plugins this app uses ship in the build:
-        // - HAPTICS: tactile feedback on buttons (nb-feedback)
-        // - BARCODE_SCANNER: reading another Petabit's QR code on the Mesclar tab
-        //   (NativeBlade::scan(), uses the device camera)
-        // - CLIPBOARD: copying the merge pairing code (NativeBlade::clipboardWrite())
-        // - PUSH: scheduled local habit-reminder notifications (NativeBlade::notification())
-        // - HTTP: native HTTP bridge to call the petabit-server API (bypasses CORS)
-        // dialog/os/process/store/fs/opener are always included by core.
+        NativeBladeConfig::bundlePush(
+            url: 'https://nativeblade.github.io/petabit-updates/version.json',
+        );
+
         NativeBladeConfig::plugins([
             Plugin::HAPTICS,
             Plugin::BARCODE_SCANNER,
@@ -40,7 +39,7 @@ class AppServiceProvider extends ServiceProvider
 
         NativeBladeConfig::desktop(function (DesktopConfig $config) {
             $config->identifier('com.petabit.app')
-                ->version('1.0.0', 1)
+                ->version(self::VERSION, self::BUNDLE_BERSION)
                 ->size(1200, 800)
                 ->icon('src-tauri/icons/logo.png')
                 ->minSize(800, 600)
@@ -50,7 +49,7 @@ class AppServiceProvider extends ServiceProvider
 
         NativeBladeConfig::android(function (AndroidConfig $config) {
             $config->identifier('com.petabit.app')
-                ->version('1.0.0', 1)
+                ->version(self::VERSION, self::BUNDLE_BERSION)
                 ->minSdk(28)
                 ->targetSdk(34)
                 ->orientation('portrait')
@@ -63,7 +62,7 @@ class AppServiceProvider extends ServiceProvider
 
         NativeBladeConfig::ios(function (IosConfig $config) {
             $config->identifier('com.petabit.app')
-                ->version('1.0.0', 1)
+                ->version(self::VERSION, self::BUNDLE_BERSION)
                 ->minIosVersion('15.0')
                 ->orientation('portrait')
                 ->statusBar(style: 'dark')
