@@ -19,6 +19,8 @@ jobs:
     env:
       NODE_VERSION: '20'
       PHP_VERSION: '8.3'
+      # Must match ->identifier(...) in AppServiceProvider's ios() config.
+      IOS_BUNDLE_ID: com.petabit.app
 
     steps:
       # ─────────────────────────────────────────────────────────────
@@ -252,7 +254,7 @@ jobs:
               <string>manual</string>
               <key>provisioningProfiles</key>
               <dict>
-                  <key>com.nativeblade.app</key>
+                  <key>$IOS_BUNDLE_ID</key>
                   <string>$PROFILE_NAME</string>
               </dict>
               <key>signingCertificate</key>
