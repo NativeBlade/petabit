@@ -51,7 +51,7 @@ class AppServiceProvider extends ServiceProvider
             $config->identifier('com.petabit.app')
                 ->version(self::VERSION, self::BUNDLE_BERSION)
                 ->minSdk(28)
-                ->targetSdk(34)
+                ->targetSdk(35)
                 ->orientation('portrait')
                 ->statusBar(style: 'dark')
                 ->splashBackground('#0a0a0a')
