@@ -4,6 +4,7 @@ namespace App\Http\Clients;
 
 use App\Native\State\AuthState;
 use App\Native\State\LocaleState;
+use App\Native\State\TimezoneState;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
@@ -20,7 +21,10 @@ class PetabitApiClient
     {
         $request = Http::baseUrl(config('petabit.api_url').'/api')
             ->acceptJson()
-            ->withHeaders(['x-lang' => LocaleState::current()])
+            ->withHeaders(array_filter([
+                'x-lang' => LocaleState::current(),
+                'x-tz' => TimezoneState::current(), // device timezone for the day boundary
+            ]))
             ->timeout(self::TIMEOUT_SECONDS);
 
         if ($token = AuthState::token()) {

@@ -9,6 +9,7 @@ use App\Native\State\HabitsState;
 use App\Native\State\OnboardingState;
 use App\Native\State\PetState;
 use App\Native\State\ReminderState;
+use App\Native\State\TimezoneState;
 use Carbon\Carbon;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -94,6 +95,16 @@ class Home extends Component
 
         // Completion changed → re-evaluate today's reminders (the JS re-feeds tz/now).
         $this->dispatch('pb-resync-reminders');
+    }
+
+    /**
+     * Persist the device's IANA timezone (from JS) so PetabitApiClient sends it
+     * as `x-tz` on every request — the server rolls the pet's "day" at the user's
+     * local midnight instead of UTC.
+     */
+    public function setDeviceTz(string $tz): void
+    {
+        TimezoneState::set($tz);
     }
 
     /* ---- local habit reminders (scheduled client-side) ---- */

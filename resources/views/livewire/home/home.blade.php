@@ -6,10 +6,13 @@
 @endphp
 
 <div style="height:100dvh; width:100%; background:#060608; color:#e8e8f0; position:relative; overflow:hidden; display:flex; flex-direction:column; font-family:system-ui, sans-serif;">
-    {{-- Schedule local habit reminders: feed the device timezone + clock (the WASM
-         side is UTC and can't know them) on open, and again whenever completion changes. --}}
+    {{-- Feed the device timezone to PHP (the WASM side is UTC and can't know it):
+         persist it for the x-tz header, and schedule local habit reminders on open
+         and whenever completion changes. --}}
     <div x-data x-init="
-        const sync = () => { try { $wire.syncReminders(Intl.DateTimeFormat().resolvedOptions().timeZone, Date.now()); } catch (e) {} };
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        try { $wire.setDeviceTz(tz); } catch (e) {}
+        const sync = () => { try { $wire.syncReminders(tz, Date.now()); } catch (e) {} };
         sync();
         $wire.on('pb-resync-reminders', sync);
     " style="display:none;"></div>
