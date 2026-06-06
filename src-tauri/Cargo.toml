@@ -55,6 +55,8 @@ tauri-plugin-barcode-scanner = { version = "2", optional = true }
 tauri-plugin-nfc = { version = "2", optional = true }
 tauri-plugin-nativeblade-push = { path = "../vendor/nativeblade/nativeblade/rust/plugins/push", optional = true }
 tauri-plugin-nativeblade-media = { path = "../vendor/nativeblade/nativeblade/rust/plugins/media", optional = true }
+tauri-plugin-nativeblade-review = { path = "../vendor/nativeblade/nativeblade/rust/plugins/review", optional = true }
+tauri-plugin-nativeblade-secure-storage = { path = "../vendor/nativeblade/nativeblade/rust/plugins/secure-storage", optional = true }
 
 # nativeblade:plugins:start
 [features]
@@ -64,6 +66,7 @@ barcode_scanner = ["dep:tauri-plugin-barcode-scanner"]
 clipboard = ["dep:tauri-plugin-clipboard-manager"]
 haptics = ["dep:tauri-plugin-haptics"]
 http = ["dep:tauri-plugin-http"]
+in_app_review = ["dep:tauri-plugin-nativeblade-review"]
 push = ["dep:tauri-plugin-nativeblade-push"]
 # nativeblade:plugins:end
 

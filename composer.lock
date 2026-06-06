@@ -2360,27 +2360,27 @@
         },
         {
             "name": "nativeblade/nativeblade",
-            "version": "v2.3.8",
+            "version": "v2.4.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NativeBlade/NativeBlade.git",
-                "reference": "a9293ea19d1e49ae90069de2ff4d43fcb93c4977"
+                "reference": "416c2947095d914f018c56f79584fbd8b00c5983"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/NativeBlade/NativeBlade/zipball/a9293ea19d1e49ae90069de2ff4d43fcb93c4977",
-                "reference": "a9293ea19d1e49ae90069de2ff4d43fcb93c4977",
+                "url": "https://api.github.com/repos/NativeBlade/NativeBlade/zipball/416c2947095d914f018c56f79584fbd8b00c5983",
+                "reference": "416c2947095d914f018c56f79584fbd8b00c5983",
                 "shasum": ""
             },
             "require": {
                 "bacon/bacon-qr-code": "^3.0",
-                "laravel/framework": "^11.0|^12.0|^13.0",
+                "laravel/framework": "^12.0|^13.0",
                 "php": "8.3.*|8.4.*|8.5.*",
                 "phpdocumentor/reflection-docblock": "^6.0"
             },
             "require-dev": {
                 "livewire/livewire": "^3.0|^4.0",
-                "orchestra/testbench": "^9.0|^10.0|^11.0",
+                "orchestra/testbench": "^10.0|^11.0",
                 "phpunit/phpunit": "^11.0|^12.0"
             },
             "type": "library",
@@ -2409,19 +2409,19 @@
             "description": "Build desktop and mobile apps with Laravel + Livewire",
             "support": {
                 "issues": "https://github.com/NativeBlade/NativeBlade/issues",
-                "source": "https://github.com/NativeBlade/NativeBlade/tree/v2.3.8"
+                "source": "https://github.com/NativeBlade/NativeBlade/tree/v2.4.3"
             },
             "funding": [
                 {
-                    "url": "https://github.com/NativeBlade",
-                    "type": "github"
+                    "url": "https://github.com/NativeBlade/NativeBlade/blob/main/SPONSORS.md",
+                    "type": "custom"
                 },
                 {
-                    "url": "https://ko-fi.com/NativeBlade",
-                    "type": "ko_fi"
+                    "url": "https://polar.sh/NativeBlade",
+                    "type": "polar"
                 }
             ],
-            "time": "2026-06-03T08:35:55+00:00"
+            "time": "2026-06-06T10:49:10+00:00"
         },
         {
             "name": "nesbot/carbon",

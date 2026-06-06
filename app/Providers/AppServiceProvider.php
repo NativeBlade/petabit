@@ -35,6 +35,7 @@ class AppServiceProvider extends ServiceProvider
             Plugin::CLIPBOARD,
             Plugin::PUSH,
             Plugin::HTTP,
+            Plugin::IN_APP_REVIEW,
         ]);
 
         NativeBladeConfig::desktop(function (DesktopConfig $config) {

@@ -74,7 +74,7 @@ class Home extends Component
     }
 
     /** Tick / untick a habit for today — persisted so it survives reopens. */
-    public function toggleDay(int $id, PetabitApiClient $api): void
+    public function toggleDay(int $id, PetabitApiClient $api)
     {
         $done = ! in_array($id, $this->done, true);
         $this->done = $done
@@ -95,6 +95,41 @@ class Home extends Component
 
         // Completion changed → re-evaluate today's reminders (the JS re-feeds tz/now).
         $this->dispatch('pb-resync-reminders');
+
+        // Just finished every habit due today → a good moment to ask for a review
+        // (the OS still decides whether to actually show it; capped to once a day).
+        if ($done && $this->justCompletedAllHabits()) {
+            return NativeBlade::requestReview()->toResponse();
+        }
+    }
+
+    /**
+     * True when every habit due today is now ticked AND we haven't already asked
+     * for a review today. Records the request day so it fires at most once daily.
+     */
+    private function justCompletedAllHabits(): bool
+    {
+        $todayIso = now()->dayOfWeekIso;
+        $due = array_filter(
+            HabitsState::active(),
+            fn ($h) => in_array($todayIso, $h['days'] ?? [1, 2, 3, 4, 5, 6, 7], true),
+        );
+        if ($due === []) {
+            return false;
+        }
+
+        $allDone = ! array_filter($due, fn ($h) => ! in_array($h['id'], $this->done, true));
+        if (! $allDone) {
+            return false;
+        }
+
+        $today = now()->toDateString();
+        if (NativeBlade::getState('review.requested_on') === $today) {
+            return false;
+        }
+        NativeBlade::setState('review.requested_on', $today);
+
+        return true;
     }
 
     /**

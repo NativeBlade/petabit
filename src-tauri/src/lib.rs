@@ -18,6 +18,9 @@ pub fn run() {
 
     #[cfg(feature = "http")]
     let builder = builder.plugin(tauri_plugin_http::init());
+
+    #[cfg(all(any(target_os = "android", target_os = "ios"), feature = "in_app_review"))]
+    let builder = builder.plugin(tauri_plugin_nativeblade_review::init());
     // nativeblade:plugins:end
 
     builder
