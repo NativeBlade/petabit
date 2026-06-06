@@ -2,10 +2,12 @@
 
 namespace App\Http\Clients;
 
+use App\Exceptions\UnauthenticatedException;
 use App\Native\State\AuthState;
 use App\Native\State\LocaleState;
 use App\Native\State\TimezoneState;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -32,6 +34,23 @@ class PetabitApiClient
         }
 
         return $request;
+    }
+
+    /** Turn a 401 (stale/revoked token) into a typed exception so the app can
+     *  sign the user out, instead of leaving them on a dead "logged in" screen. */
+    private function guard(Response $response): Response
+    {
+        if ($response->status() === 401) {
+            throw new UnauthenticatedException();
+        }
+
+        return $response;
+    }
+
+    /** guard() + Laravel's ->throw() (any other 4xx/5xx still throws as before). */
+    private function ok(Response $response): Response
+    {
+        return $this->guard($response)->throw();
     }
 
     /* ---- auth ---- */
@@ -70,7 +89,7 @@ class PetabitApiClient
     /** @return array the pet payload ({genome, alignment, stage, ...}) */
     public function pet(): array
     {
-        return $this->http()->get('/pet')->throw()->json('pet');
+        return $this->ok($this->http()->get('/pet'))->json('pet');
     }
 
     /**
@@ -82,7 +101,7 @@ class PetabitApiClient
      */
     public function sync(): array
     {
-        return $this->http()->post('/pet/sync', [])->throw()->json();
+        return $this->ok($this->http()->post('/pet/sync', []))->json();
     }
 
     /* ---- habits ---- */
@@ -90,13 +109,13 @@ class PetabitApiClient
     /** @return array<int, array> the user's routine */
     public function habits(): array
     {
-        return $this->http()->get('/habits')->throw()->json('habits');
+        return $this->ok($this->http()->get('/habits'))->json('habits');
     }
 
     /** Replace the routine. @return array<int, array> */
     public function saveHabits(array $habits): array
     {
-        return $this->http()->put('/habits', ['habits' => $habits])->throw()->json('habits');
+        return $this->ok($this->http()->put('/habits', ['habits' => $habits]))->json('habits');
     }
 
     /**
@@ -106,18 +125,18 @@ class PetabitApiClient
      */
     public function checkHabit(int $habitId, bool $done): array
     {
-        return $this->http()->post('/habits/check', ['habit_id' => $habitId, 'done' => $done])->throw()->json();
+        return $this->ok($this->http()->post('/habits/check', ['habit_id' => $habitId, 'done' => $done]))->json();
     }
 
     public function question(): string
     {
-        return (string) $this->http()->get('/reflection/question')->throw()->json('question');
+        return (string) $this->ok($this->http()->get('/reflection/question'))->json('question');
     }
 
     /** @return array{classification:array,reborn:bool,changes:array,pet:array} */
     public function submitAnswer(string $answer): array
     {
-        return $this->http()->post('/reflection/answer', compact('answer'))->throw()->json();
+        return $this->ok($this->http()->post('/reflection/answer', compact('answer')))->json();
     }
 
     /* ---- merge (Mesclar) ---- */
@@ -130,7 +149,7 @@ class PetabitApiClient
      */
     public function mergeOffer(): array
     {
-        return $this->http()->post('/merge/offer', [])->json() ?? [];
+        return $this->guard($this->http()->post('/merge/offer', []))->json() ?? [];
     }
 
     /**
@@ -140,7 +159,7 @@ class PetabitApiClient
      */
     public function mergeAccept(string $token): array
     {
-        return $this->http()->post('/merge/accept', ['token' => $token])->json() ?? [];
+        return $this->guard($this->http()->post('/merge/accept', ['token' => $token]))->json() ?? [];
     }
 
     /* ---- account ---- */
@@ -148,6 +167,6 @@ class PetabitApiClient
     /** Request account deletion (soft — purged after a grace period unless you log back in). */
     public function deleteAccount(): array
     {
-        return $this->http()->delete('/account')->throw()->json();
+        return $this->ok($this->http()->delete('/account'))->json();
     }
 }

@@ -340,6 +340,16 @@
         </div>
     </div>
 
+    {{-- Stale/revoked token (server 401) → drop the dead session and bounce to login. --}}
+    @if ($sessionExpired)
+        <button id="pb-signout" wire:nb-navigate.replace="/" style="display:none;" aria-hidden="true"></button>
+        @script
+            <script>
+                setTimeout(() => document.getElementById('pb-signout')?.click(), 50);
+            </script>
+        @endscript
+    @endif
+
     {{-- Death / cooldown overlay --}}
     @if ($petDead)
         <div style="position:absolute; inset:0; z-index:80; background:rgba(6,6,10,0.92); backdrop-filter:blur(6px); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:0 32px; text-align:center;">

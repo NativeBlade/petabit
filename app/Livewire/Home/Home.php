@@ -3,6 +3,7 @@
 namespace App\Livewire\Home;
 
 use App\Enums\HomeTab;
+use App\Exceptions\UnauthenticatedException;
 use App\Http\Clients\PetabitApiClient;
 use App\Native\State\AuthState;
 use App\Native\State\HabitsState;
@@ -32,6 +33,9 @@ class Home extends Component
     public bool $evolutionDue = false;
     public bool $petDead = false;
     public bool $reborn = false;
+
+    // Set when the server rejects our token (401) → the view bounces to login.
+    public bool $sessionExpired = false;
 
     // Merge (Mesclar) UI state.
     public string $mergeQr = '';    // inline SVG of the pairing QR while offering
@@ -63,9 +67,23 @@ class Home extends Component
             $this->done = collect(HabitsState::all())
                 ->filter(fn ($h) => $h['done_today'] ?? false)
                 ->pluck('id')->all();
+        } catch (UnauthenticatedException $e) {
+            $this->expireSession();
         } catch (\Throwable $e) {
             // Offline: fall back to the cached pet + routine.
         }
+    }
+
+    /**
+     * The server rejected our token (stale/revoked): drop the local session and
+     * flag the view to bounce to the login screen on the next render.
+     */
+    private function expireSession(): void
+    {
+        AuthState::clear();
+        PetState::clear();
+        HabitsState::clear();
+        $this->sessionExpired = true;
     }
 
     public function switchTab(string $value): void
@@ -89,6 +107,10 @@ class Home extends Component
             if (isset($result['habits'])) {
                 HabitsState::set($result['habits']);
             }
+        } catch (UnauthenticatedException $e) {
+            $this->expireSession();
+
+            return;
         } catch (\Throwable $e) {
             // Keep the optimistic local state when offline.
         }
@@ -288,6 +310,10 @@ class Home extends Component
 
         try {
             $res = $api->mergeOffer();
+        } catch (UnauthenticatedException $e) {
+            $this->expireSession();
+
+            return;
         } catch (\Throwable $e) {
             $this->mergeMsg = __('messages.errors.network');
 
@@ -350,6 +376,10 @@ class Home extends Component
 
         try {
             $res = app(PetabitApiClient::class)->mergeAccept($token);
+        } catch (UnauthenticatedException $e) {
+            $this->expireSession();
+
+            return;
         } catch (\Throwable $e) {
             $this->mergeMsg = __('messages.errors.network');
 
