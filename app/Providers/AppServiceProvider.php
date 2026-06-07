@@ -13,8 +13,8 @@ use NativeBlade\Facades\NativeBladeConfig;
 
 class AppServiceProvider extends ServiceProvider
 {
-    const VERSION = '1.0.5';
-    const BUNDLE_BERSION = 6;
+    const VERSION = '1.0.6';
+    const BUNDLE_BERSION = 7;
 
     public function register(): void
     {
@@ -25,9 +25,9 @@ class AppServiceProvider extends ServiceProvider
     {
         NativeBladeConfig::name('Petabit');
 
-        /*NativeBladeConfig::bundlePush(
+        NativeBladeConfig::bundlePush(
             url: 'https://nativeblade.github.io/petabit-updates/version.json',
-        );*/
+        );
 
         NativeBladeConfig::firebase(
             googleServices: base_path('google-services.json'),
