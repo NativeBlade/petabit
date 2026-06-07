@@ -15,6 +15,8 @@
         const sync = () => { try { $wire.syncReminders(tz, Date.now()); } catch (e) {} };
         sync();
         $wire.on('pb-resync-reminders', sync);
+        try { $wire.maybeAskAnalytics(); } catch (e) {}
+        try { $wire.trackOpen(); } catch (e) {}
     " style="display:none;"></div>
 
     <div style="flex:1; min-height:0; display:flex; flex-direction:column; position:relative; z-index:10;">
@@ -295,6 +297,12 @@
                 </div>
 
                 <div style="display:flex; flex-direction:column; gap:10px;">
+                    {{-- Analytics opt-in/out (consent first asked on the home screen) --}}
+                    <button wire:click="toggleAnalytics" wire:loading.attr="disabled" wire:target="toggleAnalytics" nb-feedback style="width:100%; padding:13px; border-radius:13px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:rgba(255,255,255,0.72); font-weight:700; font-size:13px; display:flex; align-items:center; gap:9px; cursor:pointer;">
+                        <x-nativeblade-icon name="chart-line" size="16"/>
+                        <span>{{ __('messages.home.account.analytics') }}</span>
+                        <span style="margin-left:auto; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:{{ $analyticsEnabled ? '#34d399' : 'rgba(255,255,255,0.4)' }};">{{ $analyticsEnabled ? __('messages.home.account.on') : __('messages.home.account.off') }}</span>
+                    </button>
                     <button wire:click="openSupport" nb-feedback style="{{ $secBtn }}"><x-nativeblade-icon name="lifebuoy" size="16"/> {{ __('messages.home.account.support') }}</button>
                     <button wire:click="confirmLogout" nb-feedback style="{{ $secBtn }}"><x-nativeblade-icon name="sign-out" size="16"/> {{ __('messages.home.account.logout') }}</button>
                 </div>

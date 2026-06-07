@@ -5,6 +5,7 @@ namespace App\Livewire\Home;
 use App\Enums\HomeTab;
 use App\Exceptions\UnauthenticatedException;
 use App\Http\Clients\PetabitApiClient;
+use App\Native\State\AnalyticsState;
 use App\Native\State\AuthState;
 use App\Native\State\HabitsState;
 use App\Native\State\OnboardingState;
@@ -17,6 +18,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use NativeBlade\Facades\NativeBlade;
+use NativeBlade\Plugins\Analytics;
 use NativeBlade\Plugins\Dialog;
 use NativeBlade\Plugins\Notification;
 use NativeBlade\Plugins\Scan;
@@ -118,9 +120,15 @@ class Home extends Component
         // Completion changed → re-evaluate today's reminders (the JS re-feeds tz/now).
         $this->dispatch('pb-resync-reminders');
 
+        if ($done) {
+            $this->track('habit_completed');
+        }
+
         // Just finished every habit due today → a good moment to ask for a review
         // (the OS still decides whether to actually show it; capped to once a day).
         if ($done && $this->justCompletedAllHabits()) {
+            $this->track('day_completed');
+
             return NativeBlade::requestReview()->toResponse();
         }
     }
@@ -285,6 +293,106 @@ class Home extends Component
         if ($id === 'logout' && $confirmed) {
             return $this->signOut();
         }
+        if ($id === 'analytics-consent') {
+            return $this->applyAnalytics((bool) $confirmed, markAsked: true);
+        }
+    }
+
+    /* ---- analytics consent ---- */
+
+    /**
+     * One-time consent prompt for anonymous analytics, shown from the view the
+     * first time the home screen opens. Skipped once answered (the choice can be
+     * changed later in the Conta tab). Result arrives via onConfirmResult.
+     */
+    public function maybeAskAnalytics()
+    {
+        if (AnalyticsState::asked() || ! NativeBlade::isMobile()) {
+            return null;
+        }
+
+        // Mark as asked the moment we show it (persisted in NativeBlade state) so
+        // it appears exactly once — even if the user dismisses without choosing.
+        // The actual yes/no is still recorded in onConfirmResult; default is off.
+        AnalyticsState::setAsked(true);
+
+        return NativeBlade::confirm(fn (Dialog $d) => $d
+            ->id('analytics-consent')
+            ->title(__('messages.home.account.analytics_title'))
+            ->message(__('messages.home.account.analytics_ask'))
+            ->confirmLabel(__('messages.home.account.analytics_allow'))
+            ->cancelLabel(__('messages.home.account.analytics_deny')))
+            ->toResponse();
+    }
+
+    /** Flip the analytics setting from the Conta tab. */
+    public function toggleAnalytics()
+    {
+        return $this->applyAnalytics(! AnalyticsState::enabled());
+    }
+
+    /** Persist the consent locally and tell the native SDK to start/stop collecting. */
+    private function applyAnalytics(bool $enabled, bool $markAsked = false)
+    {
+        AnalyticsState::setEnabled($enabled);
+        if ($markAsked) {
+            AnalyticsState::setAsked(true);
+        }
+
+        return NativeBlade::analytics(function (Analytics $a) use ($enabled) {
+            if ($enabled) {
+                $a->enable();
+                $this->analyticsIdentity($a); // identify right away on opt-in
+            } else {
+                $a->disable();
+            }
+        })->toResponse();
+    }
+
+    /**
+     * Per-open analytics: identify the user + log app_open (and pet_reborn when
+     * a life just ended). Called from the view (a real Livewire update, so the
+     * native action actually dispatches — mount can't). No-op without consent.
+     */
+    public function trackOpen()
+    {
+        if (! AnalyticsState::enabled() || ! NativeBlade::isMobile()) {
+            return null;
+        }
+
+        return NativeBlade::analytics(function (Analytics $a) {
+            $this->analyticsIdentity($a);
+            $a->event('app_open');
+            if ($this->reborn) {
+                $a->event('pet_reborn');
+            }
+        })->toResponse();
+    }
+
+    /** Attach the user id + non-PII audience properties to the analytics call. */
+    private function analyticsIdentity(Analytics $a): void
+    {
+        $user = AuthState::user() ?? [];
+        $pet = PetState::get() ?? [];
+        $alignment = (int) ($pet['alignment'] ?? 0);
+        $band = $alignment <= -34 ? 'evil' : ($alignment >= 34 ? 'good' : 'neutral');
+
+        if (! empty($user['id'])) {
+            $a->setUserId((string) $user['id']);
+        }
+        $a->setUserProperty('alignment_band', $band)
+            ->setUserProperty('pet_stage', (string) ($pet['stage'] ?? 'Birth'))
+            ->setUserProperty('generation', (string) ($pet['generation'] ?? 1));
+    }
+
+    /** Fire a single analytics event, but only when the user has opted in. */
+    private function track(string $event, array $params = []): void
+    {
+        if (! AnalyticsState::enabled() || ! NativeBlade::isMobile()) {
+            return;
+        }
+
+        NativeBlade::analytics(fn (Analytics $a) => $a->event($event, $params))->toResponse();
     }
 
     public function openSupport()
@@ -399,6 +507,8 @@ class Home extends Component
             'name' => $res['partner'] ?? '',
             'part' => \App\Support\GenomeLabel::sectionName($inherited['section'] ?? ''),
         ]);
+
+        $this->track('merge_done', ['section' => (string) ($inherited['section'] ?? '')]);
     }
 
     /** Map a server error code to a localized message (falls back to a generic one). */
@@ -440,6 +550,7 @@ class Home extends Component
             // Conta tab.
             'email'       => AuthState::user()['email'] ?? '',
             'appVersion'  => $this->appVersion(),
+            'analyticsEnabled' => AnalyticsState::enabled(),
         ]);
     }
 

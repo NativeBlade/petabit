@@ -25,8 +25,18 @@ class AppServiceProvider extends ServiceProvider
     {
         NativeBladeConfig::name('Petabit');
 
-        NativeBladeConfig::bundlePush(
+        /*NativeBladeConfig::bundlePush(
             url: 'https://nativeblade.github.io/petabit-updates/version.json',
+        );*/
+
+        NativeBladeConfig::firebase(
+            googleServices: base_path('google-services.json'),
+            plist: base_path('GoogleService-Info.plist'),
+        );
+
+        NativeBladeConfig::analyticsConfig(
+            autoScreenTracking: true,
+            collectionEnabledByDefault: false,
         );
 
         NativeBladeConfig::plugins([
@@ -36,6 +46,7 @@ class AppServiceProvider extends ServiceProvider
             Plugin::PUSH,
             Plugin::HTTP,
             Plugin::IN_APP_REVIEW,
+            Plugin::ANALYTICS,
         ]);
 
         NativeBladeConfig::desktop(function (DesktopConfig $config) {

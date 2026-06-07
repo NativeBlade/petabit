@@ -21,6 +21,9 @@ pub fn run() {
 
     #[cfg(all(any(target_os = "android", target_os = "ios"), feature = "in_app_review"))]
     let builder = builder.plugin(tauri_plugin_nativeblade_review::init());
+
+    #[cfg(all(any(target_os = "android", target_os = "ios"), feature = "analytics"))]
+    let builder = builder.plugin(tauri_plugin_nativeblade_analytics::init());
     // nativeblade:plugins:end
 
     builder
