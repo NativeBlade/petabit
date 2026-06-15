@@ -7,6 +7,8 @@
     "boot.filesystem": "Preparando tu mundo…",
     "boot.bundle": "Cargando Petabit…",
     "boot.bundle_progress": "Cargando archivos… :loaded/:total",
+    "boot.update_checking": "Buscando actualizaciones…",
+    "boot.update_downloading": "Actualizando… :percent%",
     "boot.config": "Alineando las estrellas…",
     "boot.migrations": "Dando forma al genoma…",
     "boot.state": "Restaurando tu viaje…",
