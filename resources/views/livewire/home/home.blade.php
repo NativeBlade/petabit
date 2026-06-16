@@ -68,7 +68,7 @@
 
             <div style="flex:1; min-height:0; background:rgba(0,0,0,0.42); border-radius:26px 26px 0 0; border-top:1px solid rgba(255,255,255,0.05); padding:18px 20px 140px; backdrop-filter:blur(12px); overflow-y:auto;">
                 <h2 style="font-size:10px; font-weight:700; color:rgba(255,255,255,0.32); text-transform:uppercase; letter-spacing:0.14em; margin-bottom:12px;">{{ __('messages.home.today') }}</h2>
-                @php $todayIso = now()->dayOfWeekIso; @endphp
+                {{-- $todayIso is the device-local weekday, passed from render() --}}
                 <div style="display:flex; flex-direction:column; gap:8px;">
                     @foreach ($this->activeHabits as $h)
                         @continue(! in_array($todayIso, $h['days'] ?? [1, 2, 3, 4, 5, 6, 7], true))

@@ -139,7 +139,7 @@ class Home extends Component
      */
     private function justCompletedAllHabits(): bool
     {
-        $todayIso = now()->dayOfWeekIso;
+        $todayIso = $this->localNow()->dayOfWeekIso;
         $due = array_filter(
             HabitsState::active(),
             fn ($h) => in_array($todayIso, $h['days'] ?? [1, 2, 3, 4, 5, 6, 7], true),
@@ -153,7 +153,7 @@ class Home extends Component
             return false;
         }
 
-        $today = now()->toDateString();
+        $today = $this->localNow()->toDateString();
         if (NativeBlade::getState('review.requested_on') === $today) {
             return false;
         }
@@ -170,6 +170,26 @@ class Home extends Component
     public function setDeviceTz(string $tz): void
     {
         TimezoneState::set($tz);
+    }
+
+    /**
+     * "Now" in the device's timezone, so "which habits are due today" uses the
+     * user's local weekday — not the WASM clock's UTC, which is a day off near
+     * local midnight. Falls back to UTC before JS has reported the timezone.
+     */
+    private function localNow(): Carbon
+    {
+        $now = Carbon::now();
+        $tz = TimezoneState::current();
+        if ($tz) {
+            try {
+                $now = $now->setTimezone($tz);
+            } catch (\Throwable $e) {
+                // invalid tz — keep UTC
+            }
+        }
+
+        return $now;
     }
 
     /* ---- local habit reminders (scheduled client-side) ---- */
@@ -540,6 +560,7 @@ class Home extends Component
             'stageDays'   => (int) ($pet['stage_days'] ?? 1),
             'daysToNext'  => (int) ($pet['days_to_next'] ?? 0),
             'phaseNumber' => (int) ($pet['phase_number'] ?? 1),
+            'todayIso'    => $this->localNow()->dayOfWeekIso, // device-local weekday for "due today"
             'stageName'   => $pet['stage'] ?? 'Birth',
             'generation'  => (int) ($pet['generation'] ?? 1),
             'alignment'   => (int) ($pet['alignment'] ?? 0),
