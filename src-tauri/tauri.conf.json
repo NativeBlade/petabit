@@ -1,7 +1,7 @@
 {
     "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/dev/tooling/cli/schema.json",
     "productName": "Petabit",
-    "version": "1.0.9",
+    "version": "1.1.1",
     "identifier": "com.petabit.app",
     "build": {
         "beforeDevCommand": "npx vite --config vite.wasm.config.js",
@@ -46,7 +46,7 @@
             "icons/icon.ico"
         ],
         "android": {
-            "versionCode": 9
+            "versionCode": 1000010
         }
     }
 }
