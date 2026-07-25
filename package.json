@@ -13,11 +13,12 @@
         "laravel-vite-plugin": "^3.1.0",
         "tailwindcss": "^4.0.0",
         "vite": "^8.0.0",
-        "axios": ">=1.11.0 <=1.14.0"
+        "axios": ">=1.11.0 <=1.14.0",
+        "esbuild": "^0.28.0"
     },
     "dependencies": {
-        "@php-wasm/universal": "^3.1.35",
-        "@php-wasm/web-8-3": "^3.1.35",
+        "@php-wasm/universal": "^3.1.41",
+        "@php-wasm/web-8-3": "^3.1.41",
         "@tauri-apps/api": "^2",
         "@tauri-apps/cli": "^2",
         "@tauri-apps/plugin-barcode-scanner": "^2",
@@ -30,6 +31,8 @@
         "@tauri-apps/plugin-opener": "^2",
         "@tauri-apps/plugin-os": "^2",
         "@tauri-apps/plugin-process": "^2",
-        "@tauri-apps/plugin-store": "^2"
+        "@tauri-apps/plugin-store": "^2",
+        "laravel-echo": "^2.2.0",
+        "pusher-js": "^8.4.0"
     }
 }

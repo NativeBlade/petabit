@@ -13,8 +13,8 @@ use NativeBlade\Facades\NativeBladeConfig;
 
 class AppServiceProvider extends ServiceProvider
 {
-    const VERSION = '1.1.2';
-    const BUNDLE_BERSION = 1000011;
+    const VERSION = '1.2.0';
+    const BUNDLE_BERSION = 1000200;
 
     public function register(): void
     {
@@ -47,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
             Plugin::HTTP,
             Plugin::IN_APP_REVIEW,
             Plugin::ANALYTICS,
+            Plugin::NATIVE_NAV
         ]);
 
         NativeBladeConfig::desktop(function (DesktopConfig $config) {
@@ -63,7 +64,7 @@ class AppServiceProvider extends ServiceProvider
             $config->identifier('com.petabit.app')
                 ->version(self::VERSION, self::BUNDLE_BERSION)
                 ->minSdk(28)
-                ->targetSdk(35)
+                ->targetSdk(36)
                 ->orientation('portrait')
                 ->statusBar(style: 'dark')
                 ->splashBackground('#0a0a0a')
@@ -90,6 +91,6 @@ class AppServiceProvider extends ServiceProvider
                 ]);
         });
 
-        NativeBladeConfig::transition('slide');
+        NativeBladeConfig::transition('none');
     }
 }

@@ -58,6 +58,7 @@ tauri-plugin-nativeblade-media = { path = "../vendor/nativeblade/nativeblade/rus
 tauri-plugin-nativeblade-review = { path = "../vendor/nativeblade/nativeblade/rust/plugins/review", optional = true }
 tauri-plugin-nativeblade-secure-storage = { path = "../vendor/nativeblade/nativeblade/rust/plugins/secure-storage", optional = true }
 tauri-plugin-nativeblade-analytics = { path = "../vendor/nativeblade/nativeblade/rust/plugins/analytics", optional = true }
+tauri-plugin-nativeblade-native-nav = { path = "../vendor/nativeblade/nativeblade/rust/plugins/native-nav", optional = true }
 
 # nativeblade:plugins:start
 [features]
@@ -69,6 +70,7 @@ clipboard = ["dep:tauri-plugin-clipboard-manager"]
 haptics = ["dep:tauri-plugin-haptics"]
 http = ["dep:tauri-plugin-http"]
 in_app_review = ["dep:tauri-plugin-nativeblade-review"]
+native_nav = ["dep:tauri-plugin-nativeblade-native-nav"]
 push = ["dep:tauri-plugin-nativeblade-push"]
 # nativeblade:plugins:end
 

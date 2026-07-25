@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d2ba54e601a0c504eade7629bf459096",
+    "content-hash": "9e94fe89fd66d47287294e4c4838546e",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -2360,16 +2360,16 @@
         },
         {
             "name": "nativeblade/nativeblade",
-            "version": "v2.6.5",
+            "version": "v37.1.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/NativeBlade/NativeBlade.git",
-                "reference": "403b8588cd8b21d1c7f762b9f2a1eb447d3f7821"
+                "reference": "ca361cbe88ced9b4b67ab8fc781904f8394c0791"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/NativeBlade/NativeBlade/zipball/403b8588cd8b21d1c7f762b9f2a1eb447d3f7821",
-                "reference": "403b8588cd8b21d1c7f762b9f2a1eb447d3f7821",
+                "url": "https://api.github.com/repos/NativeBlade/NativeBlade/zipball/ca361cbe88ced9b4b67ab8fc781904f8394c0791",
+                "reference": "ca361cbe88ced9b4b67ab8fc781904f8394c0791",
                 "shasum": ""
             },
             "require": {
@@ -2379,7 +2379,7 @@
                 "phpdocumentor/reflection-docblock": "^6.0"
             },
             "require-dev": {
-                "livewire/livewire": "^3.0|^4.0",
+                "livewire/livewire": "^4.0",
                 "orchestra/testbench": "^10.0|^11.0",
                 "phpunit/phpunit": "^11.0|^12.0"
             },
@@ -2409,19 +2409,15 @@
             "description": "Build desktop and mobile apps with Laravel + Livewire",
             "support": {
                 "issues": "https://github.com/NativeBlade/NativeBlade/issues",
-                "source": "https://github.com/NativeBlade/NativeBlade/tree/v2.6.5"
+                "source": "https://github.com/NativeBlade/NativeBlade/tree/v37.1.1"
             },
             "funding": [
                 {
                     "url": "https://github.com/NativeBlade/NativeBlade/blob/main/SPONSORS.md",
                     "type": "custom"
-                },
-                {
-                    "url": "https://polar.sh/NativeBlade",
-                    "type": "polar"
                 }
             ],
-            "time": "2026-06-22T03:04:50+00:00"
+            "time": "2026-07-25T00:53:12+00:00"
         },
         {
             "name": "nesbot/carbon",

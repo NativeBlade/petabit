@@ -17,6 +17,7 @@
         "barcode-scanner:allow-open-app-settings",
         "nativeblade-push:default",
         "nativeblade-review:default",
-        "nativeblade-analytics:default"
+        "nativeblade-analytics:default",
+        "nativeblade-native-nav:default"
     ]
 }
