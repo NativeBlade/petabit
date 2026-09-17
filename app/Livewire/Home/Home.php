@@ -8,6 +8,7 @@ use App\Http\Clients\PetabitApiClient;
 use App\Native\State\AnalyticsState;
 use App\Native\State\AuthState;
 use App\Native\State\HabitsState;
+use App\Native\State\LaunchState;
 use App\Native\State\OnboardingState;
 use App\Native\State\PetState;
 use App\Native\State\ReminderState;
@@ -31,10 +32,8 @@ class Home extends Component
     /** Habit ids checked off for today (local UI state). */
     public array $done = [];
 
-    // Lifecycle gate (set on app-open sync).
-    public bool $evolutionDue = false;
+    // Death / rebirth cooldown overlay.
     public bool $petDead = false;
-    public bool $reborn = false;
 
     // Set when the server rejects our token (401) → the view bounces to login.
     public bool $sessionExpired = false;
@@ -47,33 +46,17 @@ class Home extends Component
     public string $mergeOk = '';    // inline success message (a merge was queued)
 
     /**
-     * App-open sync: heal/damage from past days, rebirth after cooldown, decide
-     * whether an evolution is due, and load the routine + today's ticked habits.
+     * Reads local state only. The pet + routine were synced by the app launch
+     * (AppLaunch, on boot / after login), which also routed evolution and rebirth
+     * away before this screen was reached.
      */
-    public function mount(PetabitApiClient $api): void
+    public function mount(): void
     {
-        if (! AuthState::isAuthenticated()) {
-            return;
-        }
-
-        try {
-            $summary = $api->sync();
-            PetState::set($summary['pet']);
-            $this->evolutionDue = (bool) ($summary['evolution_due'] ?? false);
-            $this->petDead = (bool) ($summary['pet']['dead'] ?? false);
-            $this->reborn = (bool) ($summary['reborn'] ?? false);
-            ReminderState::setLines($summary['reminder_lines'] ?? []);
-
-            HabitsState::set($api->habits());
-            // Restore today's checks (persisted server-side).
-            $this->done = collect(HabitsState::all())
-                ->filter(fn ($h) => $h['done_today'] ?? false)
-                ->pluck('id')->all();
-        } catch (UnauthenticatedException $e) {
-            $this->expireSession();
-        } catch (\Throwable $e) {
-            // Offline: fall back to the cached pet + routine.
-        }
+        $this->petDead = (bool) (PetState::get()['dead'] ?? false);
+        // Restore today's checks (persisted server-side).
+        $this->done = collect(HabitsState::all())
+            ->filter(fn ($h) => $h['done_today'] ?? false)
+            ->pluck('id')->all();
     }
 
     /**
@@ -371,19 +354,22 @@ class Home extends Component
 
     /**
      * Per-open analytics: identify the user + log app_open (and pet_reborn when
-     * a life just ended). Called from the view (a real Livewire update, so the
-     * native action actually dispatches — mount can't). No-op without consent.
+     * the launch just restarted a life). Called from the view (a real Livewire
+     * update, so the native action actually dispatches — mount can't). No-op
+     * without consent.
      */
     public function trackOpen()
     {
+        $reborn = LaunchState::pullReborn();
+
         if (! AnalyticsState::enabled() || ! NativeBlade::isMobile()) {
             return null;
         }
 
-        return NativeBlade::analytics(function (Analytics $a) {
+        return NativeBlade::analytics(function (Analytics $a) use ($reborn) {
             $this->analyticsIdentity($a);
             $a->event('app_open');
-            if ($this->reborn) {
+            if ($reborn) {
                 $a->event('pet_reborn');
             }
         })->toResponse();

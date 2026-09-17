@@ -8,7 +8,7 @@
 <div style="height:100dvh; width:100%; background:#060608; color:#e8e8f0; position:relative; overflow:hidden; display:flex; flex-direction:column; font-family:system-ui, sans-serif;">
     {{-- Feed the device timezone to PHP (the WASM side is UTC and can't know it):
          persist it for the x-tz header, and schedule local habit reminders on open
-         and whenever completion changes. --}}
+         and whenever completion changes. The server sync already ran at launch. --}}
     <div x-data x-init="
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
         try { $wire.setDeviceTz(tz); } catch (e) {}
@@ -371,23 +371,5 @@
             <h2 style="font-family:'Cinzel',serif; font-size:22px; color:rgba(255,255,255,0.85);">{{ __('messages.home.dead_title') }}</h2>
             <p style="color:rgba(255,255,255,0.45); font-size:14px; line-height:1.6; max-width:280px;">{{ __('messages.home.dead_body') }}</p>
         </div>
-    @endif
-
-    {{-- Just reborn → confirm/edit the routine for the new life before the home. --}}
-    @if ($reborn && ! $petDead)
-        <button id="pb-reborn" wire:nb-navigate.replace="/keep-habits" style="display:none;" aria-hidden="true"></button>
-        @script
-            <script>
-                setTimeout(() => document.getElementById('pb-reborn')?.click(), 350);
-            </script>
-        @endscript
-    {{-- Evolution due → go answer the reflection, then the server evolves the pet. --}}
-    @elseif ($evolutionDue && ! $petDead)
-        <button id="pb-evolution" wire:nb-navigate.replace="/question" style="display:none;" aria-hidden="true"></button>
-        @script
-            <script>
-                setTimeout(() => document.getElementById('pb-evolution')?.click(), 350);
-            </script>
-        @endscript
     @endif
 </div>

@@ -2,9 +2,8 @@
 
 namespace App\Livewire\Evolution;
 
-use App\Http\Clients\PetabitApiClient;
-use App\Native\State\AuthState;
 use App\Native\State\HabitsState;
+use App\Native\State\LaunchState;
 use App\Native\State\PetState;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -13,17 +12,10 @@ use Livewire\Component;
 #[Layout('components.layouts.app')]
 class KeepHabits extends Component
 {
-    public function mount(PetabitApiClient $api): void
+    /** The routine was synced by the app launch (AppLaunch); this screen only reads it. */
+    public function mount(): void
     {
-        if (! AuthState::isAuthenticated()) {
-            return;
-        }
-
-        try {
-            HabitsState::set($api->habits());
-        } catch (\Throwable $e) {
-            // Offline: use the cached routine.
-        }
+        LaunchState::clearRoute(); // a rebirth launch lands here — handled
     }
 
     #[Computed]

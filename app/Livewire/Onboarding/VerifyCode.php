@@ -4,8 +4,10 @@ namespace App\Livewire\Onboarding;
 
 use App\Http\Clients\PetabitApiClient;
 use App\Native\State\AuthState;
+use App\Native\State\LaunchState;
 use App\Native\State\OnboardingState;
 use App\Native\State\PetState;
+use App\Services\AppLaunch;
 use Illuminate\Http\Client\RequestException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Flash;
@@ -75,8 +77,16 @@ class VerifyCode extends Component
         AuthState::set($result['token'], $result['user']);
         PetState::set($result['pet']);
 
-        // New users continue onboarding (welcome → setup); returning users go home.
-        return NativeBlade::navigate($this->isNew ? '/welcome' : '/home', replace: true)->toResponse();
+        // New users continue onboarding (welcome → setup).
+        if ($this->isNew) {
+            return NativeBlade::navigate('/welcome', replace: true)->toResponse();
+        }
+
+        // Returning users get the same launch as an app open (sync + routing),
+        // since the boot sync ran before they were signed in.
+        app(AppLaunch::class)->run();
+
+        return NativeBlade::navigate(LaunchState::route() ?? '/home', replace: true)->toResponse();
     }
 
     public function render()

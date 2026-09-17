@@ -3,7 +3,7 @@
 namespace App\Livewire\Onboarding;
 
 use App\Http\Clients\PetabitApiClient;
-use App\Native\State\AuthState;
+use App\Native\State\HabitsState;
 use App\Native\State\OnboardingState;
 use App\Support\HabitCatalog;
 use Livewire\Attributes\Computed;
@@ -23,20 +23,11 @@ class HabitSetup extends Component
     #[Flash]
     public string $error = '';
 
-    /** Load the existing routine from the server when editing. */
-    public function mount(PetabitApiClient $api): void
+    /** Editing: start from the routine synced by the app launch (else the seed catalog). */
+    public function mount(): void
     {
-        if (! AuthState::isAuthenticated()) {
-            return;
-        }
-
-        try {
-            $server = $api->habits();
-            if ($server) {
-                OnboardingState::loadRoutine($server);
-            }
-        } catch (\Throwable $e) {
-            // Offline / first run: keep the local seed catalog.
+        if ($routine = HabitsState::all()) {
+            OnboardingState::loadRoutine($routine);
         }
     }
 
@@ -97,7 +88,8 @@ class HabitSetup extends Component
         }
 
         try {
-            $api->saveHabits($this->routinePayload());
+            // The saved routine (with server ids) becomes the local cache home reads.
+            HabitsState::set($api->saveHabits($this->routinePayload()));
         } catch (\Throwable $e) {
             $this->error = __('messages.errors.network');
 

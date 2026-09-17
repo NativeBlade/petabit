@@ -7,8 +7,10 @@ use App\Native\State\AuthState;
 use App\Native\State\LocaleState;
 use App\Native\State\TimezoneState;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use NativeBlade\Facades\NativeBlade;
 
 /**
  * Wraps the petabit-server API: base URL, bearer token, timeout in one place.
@@ -19,9 +21,11 @@ class PetabitApiClient
 {
     private const TIMEOUT_SECONDS = 20;
 
-    private function http(): PendingRequest
+    /** @param  PendingRequest|null  $request  a pool slot to configure, else a fresh request */
+    private function http(?PendingRequest $request = null): PendingRequest
     {
-        $request = Http::baseUrl(config('petabit.api_url').'/api')
+        $request = ($request ?? Http::acceptJson())
+            ->baseUrl(config('petabit.api_url').'/api')
             ->acceptJson()
             ->withHeaders(array_filter([
                 'x-lang' => LocaleState::current(),
@@ -102,6 +106,35 @@ class PetabitApiClient
     public function sync(): array
     {
         return $this->ok($this->http()->post('/pet/sync', []))->json();
+    }
+
+    /**
+     * sync() + habits() in parallel — one round trip over the native HTTP bridge
+     * instead of two replays. Used by the app launch (boot / right after login).
+     *
+     * @return array{sync:array,habits:array<int,array>}
+     */
+    public function launch(): array
+    {
+        $responses = NativeBlade::pool(fn (Pool $pool) => [
+            $this->http($pool->as('sync'))->post('/pet/sync', []),
+            $this->http($pool->as('habits'))->get('/habits'),
+        ]);
+
+        return [
+            'sync' => $this->ok($this->pooled($responses['sync']))->json(),
+            'habits' => $this->ok($this->pooled($responses['habits']))->json('habits'),
+        ];
+    }
+
+    /** A pool slot is either a Response or the exception that request raised. */
+    private function pooled(mixed $result): Response
+    {
+        if ($result instanceof \Throwable) {
+            throw $result;
+        }
+
+        return $result;
     }
 
     /* ---- habits ---- */

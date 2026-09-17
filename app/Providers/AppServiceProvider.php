@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\AppLaunch;
 use Illuminate\Support\ServiceProvider;
 use NativeBlade\Config\AndroidConfig;
 use NativeBlade\Config\DesktopConfig;
@@ -25,9 +26,7 @@ class AppServiceProvider extends ServiceProvider
     {
         NativeBladeConfig::name('Petabit');
 
-        NativeBladeConfig::bundlePush(
-            url: 'https://nativeblade.github.io/petabit-updates/version.json',
-        );
+        NativeBladeConfig::onBoot(fn () => app(AppLaunch::class)->run());
 
         NativeBladeConfig::firebase(
             googleServices: base_path('google-services.json'),
@@ -49,16 +48,6 @@ class AppServiceProvider extends ServiceProvider
             Plugin::ANALYTICS,
             Plugin::NATIVE_NAV
         ]);
-
-        NativeBladeConfig::desktop(function (DesktopConfig $config) {
-            $config->identifier('com.petabit.app')
-                ->version(self::VERSION, self::BUNDLE_BERSION)
-                ->size(1200, 800)
-                ->icon('src-tauri/icons/logo.png')
-                ->minSize(800, 600)
-                ->resizable()
-                ->splashBackground('#0a0a0a');
-        });
 
         NativeBladeConfig::android(function (AndroidConfig $config) {
             $config->identifier('com.petabit.app')

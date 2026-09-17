@@ -3,7 +3,9 @@
 namespace App\Livewire\Reflection;
 
 use App\Http\Clients\PetabitApiClient;
+use App\Native\State\LaunchState;
 use App\Native\State\PetState;
+use App\Native\State\QuestionState;
 use App\Native\State\ReflectionState;
 use Livewire\Attributes\Flash;
 use Livewire\Attributes\Layout;
@@ -21,10 +23,22 @@ class Question extends Component
     #[Flash]
     public string $error = '';
 
-    public function mount(PetabitApiClient $api): void
+    /** The question prefetched by the app launch; when missing, loadQuestion() fetches it. */
+    public function mount(): void
     {
+        $this->question = QuestionState::get();
+    }
+
+    /** Called from the view's wire:init only when the launch couldn't prefetch it. */
+    public function loadQuestion(PetabitApiClient $api): void
+    {
+        if ($this->question !== '') {
+            return;
+        }
+
         try {
             $this->question = $api->question();
+            QuestionState::set($this->question);
         } catch (\Throwable $e) {
             // Fall back to the canonical prompt if the server is unreachable.
             $this->question = __('messages.question.title');
@@ -49,6 +63,8 @@ class Question extends Component
 
         PetState::set($result['pet']);
         ReflectionState::set($result);
+        QuestionState::clear();
+        LaunchState::clearRoute();
 
         return NativeBlade::navigate('/analyzing')->toResponse();
     }

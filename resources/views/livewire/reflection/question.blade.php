@@ -14,7 +14,14 @@
             @endif
         </div>
 
-        <h2 style="font-family:'Cinzel',serif; font-size:21px; text-align:center; color:rgba(255,255,255,0.88); margin-bottom:8px;">{{ $question ?: __('messages.question.title') }}</h2>
+        @if ($question !== '')
+            <h2 style="font-family:'Cinzel',serif; font-size:21px; text-align:center; color:rgba(255,255,255,0.88); margin-bottom:8px;">{{ $question }}</h2>
+        @else
+            {{-- Not prefetched by the launch: fetch it now (the server may take a few seconds). --}}
+            <div wire:init="loadQuestion" style="display:flex; justify-content:center; align-items:center; min-height:30px; margin-bottom:8px;">
+                <x-petabit.spinner target="loadQuestion" :size="18" color="rgba(255,255,255,0.6)"/>
+            </div>
+        @endif
         <p style="font-size:13px; color:rgba(255,255,255,0.3); text-align:center; margin-bottom:18px; line-height:1.55;">{{ __('messages.question.subtitle') }}</p>
 
         <div style="position:relative; flex:1; display:flex; flex-direction:column; margin-bottom:12px;">
