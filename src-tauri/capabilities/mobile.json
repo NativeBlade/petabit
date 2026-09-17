@@ -18,6 +18,7 @@
         "nativeblade-push:default",
         "nativeblade-review:default",
         "nativeblade-analytics:default",
-        "nativeblade-native-nav:default"
+        "nativeblade-native-nav:default",
+        "nativeblade-system:default"
     ]
 }
