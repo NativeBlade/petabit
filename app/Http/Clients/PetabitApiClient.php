@@ -109,8 +109,9 @@ class PetabitApiClient
     }
 
     /**
-     * sync() + habits() in parallel — one round trip over the native HTTP bridge
-     * instead of two replays. Used by the app launch (boot / right after login).
+     * sync() + habits() in parallel over the native HTTP bridge, so the splash
+     * waits for one round trip instead of two. Used by the app launch (boot /
+     * right after login).
      *
      * @return array{sync:array,habits:array<int,array>}
      */

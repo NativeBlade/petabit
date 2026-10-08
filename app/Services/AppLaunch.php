@@ -18,8 +18,9 @@ use App\Native\State\ReminderState;
  * routine into local state, and records where the app should open; the route
  * middlewares read that decision, so screens only ever read local state.
  *
- * onBoot replays from the top on every HTTP call, so the calls happen first in
- * a fixed order and every state write waits until all responses are in.
+ * The calls happen first and every state write waits until all responses are
+ * in, so a failure halfway (offline, revoked token) never leaves a launch half
+ * applied: the app opens on the cached pet + routine.
  */
 class AppLaunch
 {

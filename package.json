@@ -17,8 +17,8 @@
         "esbuild": "^0.28.0"
     },
     "dependencies": {
-        "@php-wasm/universal": "^3.1.41",
-        "@php-wasm/web-8-3": "^3.1.41",
+        "@php-wasm/universal": "^3.1.57",
+        "@php-wasm/web-8-3": "^3.1.57",
         "@tauri-apps/api": "^2",
         "@tauri-apps/cli": "^2",
         "@tauri-apps/plugin-barcode-scanner": "^2",

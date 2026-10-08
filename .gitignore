@@ -72,3 +72,7 @@ Homestead.yaml
 
 # Certs
 /certs
+
+# NativeBlade build artifacts
+/public/nativeblade-locale.json
+/public/lang

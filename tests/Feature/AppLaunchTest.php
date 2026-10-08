@@ -9,6 +9,7 @@ use App\Native\State\PetState;
 use App\Native\State\QuestionState;
 use App\Services\AppLaunch;
 use Illuminate\Support\Facades\Http;
+use NativeBlade\Facades\NativeBlade;
 use Tests\TestCase;
 
 class AppLaunchTest extends TestCase
@@ -16,6 +17,7 @@ class AppLaunchTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        NativeBlade::fake();
         config(['petabit.api_url' => 'https://api.test']);
         AuthState::set('token', ['id' => 1, 'nickname' => 'jeff']);
     }
