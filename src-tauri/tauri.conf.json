@@ -48,7 +48,7 @@
             "icons/icon.ico"
         ],
         "android": {
-            "versionCode": 1000203
+            "versionCode": 1000205
         },
         "iOS": {
             "minimumSystemVersion": "15.0"
